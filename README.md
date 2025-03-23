@@ -21,3 +21,10 @@ Clone the repository and install the required dependencies:
 git clone https://github.com/kpreiksa/meshtastic-scripts.git
 cd meshtastic-scripts
 pip install -r requirements.txt
+```
+
+## Troubleshooting 🛠️
+If you encounter any issues while using the scripts, please check the following:
+
+- 🔋 Make sure the node is plugged in and turned on
+- 🔌 Make sure you are not using a power-only USB cable.
