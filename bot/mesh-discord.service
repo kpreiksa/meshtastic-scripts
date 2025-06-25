@@ -1,0 +1,14 @@
+[Unit]
+Description=Service to host meshtastic discord bot
+After=network-online.target
+
+[Service]
+ExecStart=/bin/bash /usr/share/mesh-client/mesh-service-script.sh
+WorkingDirectory=/usr/share/mesh-client/
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target

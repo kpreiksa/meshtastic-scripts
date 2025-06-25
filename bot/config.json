@@ -1,0 +1,13 @@
+{
+  "discord_bot_token": "<your_token>",
+  "discord_channel_id": "<your_channel>",
+  "time_zone": "America/Detroit",
+  "channel_names": {
+    "0": "LongFast",
+    "2": "b-tween-us"
+  },
+  "interface_info": {
+    "method": "serial",
+    "address": "192.168.101.71"
+  }
+}
