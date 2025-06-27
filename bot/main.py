@@ -5,13 +5,12 @@ import queue
 import sys
 import time
 from datetime import datetime
-
-import meshtastic.tcp_interface
 import discord
 from discord import app_commands, ButtonStyle
 from discord.ui import View, Button
 import meshtastic
 import meshtastic.serial_interface
+import meshtastic.tcp_interface
 import pytz
 from pubsub import pub
 
@@ -48,14 +47,14 @@ token = config["discord_bot_token"]
 channel_id = int(config["discord_channel_id"])
 channel_names = config["channel_names"]
 time_zone = config["time_zone"]
-
+hostname = config["hostname"]
 interface_info = config.get("interface_info", {})
 interface_type = interface_info.get("method", "serial")
 
 
 meshtodiscord = queue.Queue()
 discordtomesh = queue.Queue()
-nodelistq = queue.Queue()
+nodelistq = queue.Queue() # queue for /active command
 
 def onConnectionMesh(interface, topic=pub.AUTO_TOPIC):
     logging.info(interface.myInfo)
@@ -89,14 +88,13 @@ def onReceiveMesh(packet, interface):  # Called when a packet arrives from mesh.
             nodes = interface.nodes
             from_long_name = get_long_name(packet['fromId'], nodes)
             to_long_name = get_long_name(packet['toId'], nodes) if packet['toId'] != '^all' else 'All Nodes'
-            snr = packet.get('rxSnr')
-            rssi = packet.get('rxRssi')
+            snr = packet.get('rxSnr', '?')
+            rssi = packet.get('rxRssi', '?')
             logging.info(f'From: {from_long_name}')
 
             embed = discord.Embed(title="Message Received", description=packet['decoded']['text'], color=0x67ea94)
             embed.add_field(name="From Node", value=f"{from_long_name} ({packet['fromId']})", inline=True)
-            embed.add_field(name="SNR", value=f"{snr}dB", inline=True)
-            embed.add_field(name="RSSI", value=f"{rssi}dB", inline=True)
+            embed.add_field(name="RxSNR / RxRSSI", value=f"{snr}dB / {rssi}dB", inline=True)
             embed.set_footer(text=f"{current_time}")
 
             if packet['toId'] == '^all':
@@ -141,7 +139,7 @@ class MeshBot(discord.Client):
                 logging.info(f"Error: Could not connect {ex}")
                 sys.exit(1)
         elif interface_type == 'tcp':
-            addr = interface_info.get("address")
+            addr = interface_info.get("address") # TODO Add in port option
             if not addr:
                 logging.info(f'interface.address required for tcp connection')
             try:
@@ -149,6 +147,8 @@ class MeshBot(discord.Client):
             except Exception as ex:
                 logging.info(f"Error: Could not connect {ex}")
                 sys.exit(1)
+        elif interface_type == 'ble':
+            raise NotImplementedError(f"BLE interface connection is not implemented yet")
         else:
             logging.info(f'Unsupported interface: {interface_type}')
             
@@ -201,7 +201,6 @@ class MeshBot(discord.Client):
                 if meshmessage.startswith('channel='):
                     channel_index = int(meshmessage[8:meshmessage.find(' ')])
                     message = meshmessage[meshmessage.find(' ') + 1:]
-                    # message = f'{message}\n-bot'
                     self.iface.sendText(message, channelIndex=channel_index)
                 elif meshmessage.startswith('nodenum='):
                     nodenum = int(meshmessage[8:meshmessage.find(' ')])
@@ -209,9 +208,7 @@ class MeshBot(discord.Client):
                     # message = f'{message}\n-bot'
                     self.iface.sendText(message, destinationId=nodenum)
                 else:
-                    message = meshmessage
-                    # message = f'{meshmessage}\n-bot'
-                    self.iface.sendText(message)
+                    self.iface.sendText(meshmessage)
                 discordtomesh.task_done()
             except:
                 pass
@@ -306,7 +303,7 @@ for channel_index, channel_name in channel_names.items():
 async def active(interaction: discord.Interaction):
     await interaction.response.defer()
 
-    nodelistq.put(True)
+    nodelistq.put(True) # sets queue to true, background task then executes - this should prob be changed
 
     await asyncio.sleep(1)
 

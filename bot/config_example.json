@@ -1,0 +1,17 @@
+{
+  "discord_bot_token": "<your_token>",
+  "discord_channel_id": "<your_discord_channel_id>",
+  "time_zone": "America/Detroit",
+  "channel_names": {
+    "0": "CHANNEL_0",
+    "1": "CHANNEL_1",
+    "2": "CHANNEL_2",
+    "3": "CHANNEL_3"
+  },
+  "interface_info": {
+    "method": "serial", // serial, tcp, or ble
+    "address": "192.168.1.1",
+    "port": "4403",
+    "ble_node": "NODE_NAME_OR_BT"
+  }
+}
