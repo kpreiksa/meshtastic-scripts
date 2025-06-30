@@ -9,6 +9,7 @@ import discord
 from discord import app_commands, ButtonStyle
 from discord.ui import View, Button
 import meshtastic
+import meshtastic.ble_interface
 import meshtastic.serial_interface
 import meshtastic.tcp_interface
 import pytz
@@ -47,14 +48,15 @@ token = config["discord_bot_token"]
 channel_id = int(config["discord_channel_id"])
 channel_names = config["channel_names"]
 time_zone = config["time_zone"]
-hostname = config["hostname"]
 interface_info = config.get("interface_info", {})
 interface_type = interface_info.get("method", "serial")
 
+active_time = 61 # maybe move into config?
 
-meshtodiscord = queue.Queue()
-discordtomesh = queue.Queue()
-nodelistq = queue.Queue() # queue for /active command
+
+meshtodiscord = queue.Queue(maxsize=20) # queue for sending info to discord (when message received on mesh, process then throw in this queue for discord)
+discordtomesh = queue.Queue(maxsize=20) # queue for all send-message types (sendid, sendnum or to a specific channel)
+nodelistq = queue.Queue(maxsize=20) # queue for /active command
 
 def onConnectionMesh(interface, topic=pub.AUTO_TOPIC):
     logging.info(interface.myInfo)
@@ -148,14 +150,16 @@ class MeshBot(discord.Client):
                 logging.info(f"Error: Could not connect {ex}")
                 sys.exit(1)
         elif interface_type == 'ble':
-            raise NotImplementedError(f"BLE interface connection is not implemented yet")
+            ble_node = interface_info.get("ble_node") # TODO Add in port option
+            self.iface = meshtastic.ble_interface.BLEInterface(address=ble_node)
+            # raise NotImplementedError(f"BLE interface connection is not implemented yet")
         else:
             logging.info(f'Unsupported interface: {interface_type}')
             
         while not self.is_closed():
             counter += 1
             if (counter % 12 == 1):  # Approximately 1 minute (every 12th call, call every 5 seconds) to refresh the node list.
-                nodelist = ["**Nodes seen in the last 15 minutes:**\n"]
+                nodelist = [f"**Nodes seen in the last {active_time} minutes:**\n"]
                 nodes = self.iface.nodes
                 for node in nodes:
                     try:
@@ -175,10 +179,10 @@ class MeshBot(discord.Client):
                             local_time = datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(timezone)
                             timestr = local_time.strftime('%d %B %Y %I:%M:%S %p')
                         else:
-                            # 15 minute timer for active nodes.
-                            ts = time.time() - (16 * 60)
+                            # active_time minute timer for active nodes.
+                            ts = time.time() - ((active_time+1) * 60)
                             timestr = "Unknown"
-                        if ts > time.time() - (15 * 60):
+                        if ts > time.time() - (active_time * 60):
                             nodelist.append(f"\n**ID:** {id} | **Long Name:** {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}")
                     except KeyError as e:
                         logging.error(e)
