@@ -171,11 +171,11 @@ class MeshBot(discord.Client):
 
                 if time_limit == True:
                     # list all nodes
-                    nodelist.append([f"\n {id} | {shortname} - {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
+                    nodelist.append([f"\n {id} | {shortname} --- {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
                 else:
                     # check if they are greater then the time limit
                     if ts > time.time() - (time_limit * 60):
-                        nodelist.append([f"\n {id} | {shortname} - {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
+                        nodelist.append([f"\n {id} | {shortname} --- {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
 
             except KeyError as e:
                 logging.error(e)
