@@ -136,32 +136,62 @@ class MeshBot(discord.Client):
         logging.info(f'Logged in as {self.user} (ID: {self.user.id})')
 
     def get_active_nodes(self, time_limit=15): # must NOT be async or printing info takes forever (or never happens?)
+        logging.info(f'get_active_nodes has been called with: {time_limit}')
+
         # use self.nodes that was pulled 1m ago
-        nodelist = [f"**Nodes seen in the last {time_limit} minutes:**\n"]
+        nodelist = []
+
+        if time_limit == True:
+            # return ALL nodes
+            nodelist_start = f"**All Nodes Seen:**\n"
+        else:
+            # don't return all nodes, only active, and convert str:time_limit into int
+            time_limit = int(time_limit)
+            nodelist_start = f"**Nodes seen in the last {time_limit} minutes:**\n"
+
         for node in self.nodes.values():
             try:
                 id = node.get('user',{}).get('id','???')
                 shortname = node.get('user',{}).get('shortName','???')
                 longname = node.get('user',{}).get('longName','???')
-                hopsaway = node.get('hopsAway', 0)
+                hopsaway = node.get('hopsAway', '?')
                 snr = node.get('snr','?')
-                lastheard = node.get('lastHeard')
 
+                # some nodes don't have last heard, when listing active nodes, don't return these
+                lastheard = node.get('lastHeard')
                 if lastheard: # ignore if doesn't have lastHeard property
                     ts = int(lastheard)
-                    if ts > time.time() - (time_limit * 60): # Only include if its less then time_limit
-                        timezone = pytz.timezone(time_zone)
-                        local_time = datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(timezone)
-                        timestr = local_time.strftime('%d %B %Y %I:%M:%S %p')
-                        nodelist.append(f"\n {id} | {shortname} - {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}")
+                    # if ts > time.time() - (time_limit * 60): # Only include if its less then time_limit
+                    timezone = pytz.timezone(time_zone)
+                    local_time = datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(timezone)
+                    timestr = local_time.strftime('%d %B %Y %I:%M:%S %p')
+                else:
+                    timestr = '???'
+                    ts = 0
+
+                if time_limit == True:
+                    # list all nodes
+                    nodelist.append([f"\n {id} | {shortname} - {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
+                else:
+                    # check if they are greater then the time limit
+                    if ts > time.time() - (time_limit * 60):
+                        nodelist.append([f"\n {id} | {shortname} - {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
+
             except KeyError as e:
                 logging.error(e)
                 pass
-        if len(nodelist) == 1:
+
+        if len(nodelist) == 0 and time_limit != True:
             # no nodes found, change response
-            nodelist = [f'**No Nodes seen in teh last {time_limit} minutes**']
+            nodelist_start = f'**No Nodes seen in the last {time_limit} minutes**'
+        # sort nodelist and remove ts from it
+        nodelist_sorted = sorted(nodelist, key=lambda x: x[1], reverse=True)
+        nodelist_sorted = [x[0] for x in nodelist_sorted]
+        nodelist_sorted.insert(0, nodelist_start)
+
+
         # Split node list into chunks of 10 rows.
-        nodelist_chunks = ["".join(nodelist[i:i + 10]) for i in range(0, len(nodelist), 10)]
+        nodelist_chunks = ["".join(nodelist_sorted[i:i + 10]) for i in range(0, len(nodelist_sorted), 10)]
         return nodelist_chunks
 
     async def background_task(self):
@@ -187,10 +217,21 @@ class MeshBot(discord.Client):
                 logging.info(f"Error: Could not connect {ex}")
                 sys.exit(1)
         elif interface_type == 'ble':
-            ble_node = interface_info.get("ble_node")
-            self.iface = meshtastic.ble_interface.BLEInterface(address=ble_node)
+            try:
+                ble_node = interface_info.get("ble_node")
+                self.iface = meshtastic.ble_interface.BLEInterface(address=ble_node)
+            except Exception as ex:
+                logging.info(f'Error: Could not connect {ex}')
+                sys.exit(1)
         else:
             logging.info(f'Unsupported interface: {interface_type}')
+
+        # this isn't working on ble, idk if it'll work on tcp. It does work in ipython
+        # await asyncio.sleep(10)
+        # myinfo = self.iface.getMyUser()
+        # shortname = myinfo.get('user',{}).get('shortName','???')
+        # longname = myinfo.get('user',{}).get('longName','???')
+        # logging.info(f'Bot connected to Mesh node: {shortname} - {longname} with connection {interface_type}')
 
         # TODO maybe print my node info to discord or logger
 
@@ -228,7 +269,7 @@ class MeshBot(discord.Client):
                 pass
             try:
                 active_time = nodelistq.get_nowait()
-                nodelist_chuncks = self.get_active_nodes(int(active_time))
+                nodelist_chuncks = self.get_active_nodes(active_time)
                 # Sends node list if there are any.
                 for chunk in nodelist_chuncks:
                     await channel.send(chunk)
@@ -258,6 +299,7 @@ async def help_command(interaction: discord.Interaction):
                  "`/sendid` - Send a message to another node.\n"
                  "`/sendnum` - Send a message to another node.\n"
                  "`/active` - Shows all active nodes. Default is 61\n"
+                 "`/all_nodes` - Shows all nodes.\n"
                  "`/help` - Shows this help message.\n")
 
     # Dynamically add channel commands based on channel_names
@@ -320,7 +362,18 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
     await interaction.response.defer()
 
     logging.info(f'/active received, sending to queue with time: {active_time}')
-    nodelistq.put(active_time) # sets queue to true, background task then executes - this should prob be changed
+    nodelistq.put(active_time) # sets queue to the time, background task then executes - this should prob be changed
+
+    await asyncio.sleep(1)
+
+    await interaction.delete_original_response()
+
+@client.tree.command(name="all_nodes", description="Lists all nodes.")
+async def all_nodes(interaction: discord.Interaction):
+    await interaction.response.defer()
+
+    logging.info(f'/all_node received, sending to queue with value: True')
+    nodelistq.put(True) # sets queue to true, background task then executes - this should prob be changed
 
     await asyncio.sleep(1)
 
