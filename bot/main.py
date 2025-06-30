@@ -51,9 +51,6 @@ time_zone = config["time_zone"]
 interface_info = config.get("interface_info", {})
 interface_type = interface_info.get("method", "serial")
 
-active_time = 61 # maybe move into config?
-
-
 meshtodiscord = queue.Queue(maxsize=20) # queue for sending info to discord (when message received on mesh, process then throw in this queue for discord)
 discordtomesh = queue.Queue(maxsize=20) # queue for all send-message types (sendid, sendnum or to a specific channel)
 nodelistq = queue.Queue(maxsize=20) # queue for /active command
@@ -104,6 +101,8 @@ def onReceiveMesh(packet, interface):  # Called when a packet arrives from mesh.
             else:
                 embed.add_field(name="To Node", value=f"{to_long_name} ({packet['toId']})", inline=True)
 
+            # TODO add number of Hops from iface.nodes
+
             logging.info(f'Putting on Discord queue')
             meshtodiscord.put(embed)
 
@@ -118,6 +117,7 @@ class MeshBot(discord.Client):
         super().__init__(*args, **kwargs)
         self.tree = app_commands.CommandTree(self)
         self.iface = None  # Initialize iface as None.
+        self.nodes = {}  # Init nodes list as empty dict
 
     async def setup_hook(self) -> None:  # Create the background task and run it in the background.
         self.bg_task = self.loop.create_task(self.background_task())
@@ -126,10 +126,35 @@ class MeshBot(discord.Client):
     async def on_ready(self):
         logging.info(f'Logged in as {self.user} (ID: {self.user.id})')
 
+    def get_active_nodes(self, time_limit=15): # must NOT be async or printing info takes forever (or never happens?)
+        # use self.nodes that was pulled 1m ago
+        nodelist = [f"**Nodes seen in the last {time_limit} minutes:**\n"]
+        for node in self.nodes.values():
+            try:
+                id = node.get('user',{}).get('id','???')
+                shortname = node.get('user',{}).get('shortName','???')
+                longname = node.get('user',{}).get('longName','???')
+                hopsaway = node.get('hopsAway', 0)
+                snr = node.get('snr','?')
+                lastheard = node.get('lastHeard')
+
+                if lastheard: # ignore if doesn't have lastHeard property
+                    ts = int(lastheard)
+                    if ts > time.time() - (time_limit * 60): # Only include if its less then time_limit
+                        timezone = pytz.timezone(time_zone)
+                        local_time = datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(timezone)
+                        timestr = local_time.strftime('%d %B %Y %I:%M:%S %p')
+                        nodelist.append(f"\n {id} | {shortname} - {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}")
+            except KeyError as e:
+                logging.error(e)
+                pass
+        # Split node list into chunks of 10 rows.
+        nodelist_chunks = ["".join(nodelist[i:i + 10]) for i in range(0, len(nodelist), 10)]
+        return nodelist_chunks
+
     async def background_task(self):
         await self.wait_until_ready()
         counter = 0
-        nodelist = []
         channel = self.get_channel(channel_id)
         pub.subscribe(onReceiveMesh, "meshtastic.receive")
         pub.subscribe(onConnectionMesh, "meshtastic.connection.established")
@@ -150,46 +175,18 @@ class MeshBot(discord.Client):
                 logging.info(f"Error: Could not connect {ex}")
                 sys.exit(1)
         elif interface_type == 'ble':
-            ble_node = interface_info.get("ble_node") # TODO Add in port option
+            ble_node = interface_info.get("ble_node")
             self.iface = meshtastic.ble_interface.BLEInterface(address=ble_node)
             # raise NotImplementedError(f"BLE interface connection is not implemented yet")
         else:
             logging.info(f'Unsupported interface: {interface_type}')
-            
+
         while not self.is_closed():
             counter += 1
-            if (counter % 12 == 1):  # Approximately 1 minute (every 12th call, call every 5 seconds) to refresh the node list.
-                nodelist = [f"**Nodes seen in the last {active_time} minutes:**\n"]
-                nodes = self.iface.nodes
-                for node in nodes:
-                    try:
-                        id = str(nodes[node]['user']['id'])
-                        longname = str(nodes[node]['user']['longName'])
-                        if "hopsAway" in nodes[node]:
-                            hopsaway = str(nodes[node]['hopsAway'])
-                        else:
-                            hopsaway = "0"
-                        if "snr" in nodes[node]:
-                            snr = str(nodes[node]['snr'])
-                        else:
-                            snr = "?"
-                        if "lastHeard" in nodes[node]:
-                            ts = int(nodes[node]['lastHeard'])
-                            timezone = pytz.timezone(time_zone)
-                            local_time = datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(timezone)
-                            timestr = local_time.strftime('%d %B %Y %I:%M:%S %p')
-                        else:
-                            # active_time minute timer for active nodes.
-                            ts = time.time() - ((active_time+1) * 60)
-                            timestr = "Unknown"
-                        if ts > time.time() - (active_time * 60):
-                            nodelist.append(f"\n**ID:** {id} | **Long Name:** {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}")
-                    except KeyError as e:
-                        logging.error(e)
-                        pass
-
-                # Split node list into chunks of 10 rows.
-                nodelist_chunks = ["".join(nodelist[i:i + 10]) for i in range(0, len(nodelist), 10)]
+            # Approximately 1 minute (every 12th call, call every 5 seconds) to refresh the node list.
+            # save nodelist to self, so its available for pulling active nodes
+            if (counter % 12 == 1):
+                self.nodes = self.iface.nodes
 
             try:
                 meshmessage = meshtodiscord.get_nowait()
@@ -217,9 +214,10 @@ class MeshBot(discord.Client):
             except:
                 pass
             try:
-                nodelistq.get_nowait()
+                active_time = nodelistq.get_nowait()
+                nodelist_chuncks = self.get_active_nodes(int(active_time))
                 # Sends node list if there are any.
-                for chunk in nodelist_chunks:
+                for chunk in nodelist_chuncks:
                     await channel.send(chunk)
                 nodelistq.task_done()
             except queue.Empty:
@@ -232,8 +230,9 @@ class HelpView(View):
 
         # Create buttons
         self.add_item(Button(label="Kavitate", style=ButtonStyle.link, url="https://github.com/Kavitate"))
-        self.add_item(Button(label="Mehtastic", style=ButtonStyle.link, url="https://meshtastic.org"))
+        self.add_item(Button(label="Meshtastic", style=ButtonStyle.link, url="https://meshtastic.org"))
         self.add_item(Button(label="Meshmap", style=ButtonStyle.link, url="https://meshmap.net"))
+        self.add_item(Button(label="Python Meshtastic Docs", style=ButtonStyle.link, url="https://python.meshtastic.org/index.html"))
 
 client = MeshBot(intents=discord.Intents.default())
 
@@ -245,7 +244,7 @@ async def help_command(interaction: discord.Interaction):
     help_text = ("**Command List**\n"
                  "`/sendid` - Send a message to another node.\n"
                  "`/sendnum` - Send a message to another node.\n"
-                 "`/active` - Shows all active nodes.\n"
+                 "`/active` - Shows all active nodes. Default is 61\n"
                  "`/help` - Shows this help message.\n")
 
     # Dynamically add channel commands based on channel_names
@@ -304,10 +303,11 @@ for channel_index, channel_name in channel_names.items():
         discordtomesh.put(f"channel={channel_index} {message}")
 
 @client.tree.command(name="active", description="Lists all active nodes.")
-async def active(interaction: discord.Interaction):
+async def active(interaction: discord.Interaction, active_time: str='61'):
     await interaction.response.defer()
 
-    nodelistq.put(True) # sets queue to true, background task then executes - this should prob be changed
+    logging.info(f'/active received, sending to queue with time: {active_time}')
+    nodelistq.put(active_time) # sets queue to true, background task then executes - this should prob be changed
 
     await asyncio.sleep(1)
 
