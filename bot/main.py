@@ -56,7 +56,7 @@ discordtomesh = queue.Queue(maxsize=20) # queue for all send-message types (send
 nodelistq = queue.Queue(maxsize=20) # queue for /active command
 
 def onConnectionMesh(interface, topic=pub.AUTO_TOPIC):
-    logging.info(interface.myInfo)
+    logging.info(interface.myInfo) # TODO log more info about my node here
 
 def get_long_name(node_id, nodes):
     if node_id in nodes:
@@ -89,11 +89,20 @@ def onReceiveMesh(packet, interface):  # Called when a packet arrives from mesh.
             to_long_name = get_long_name(packet['toId'], nodes) if packet['toId'] != '^all' else 'All Nodes'
             snr = packet.get('rxSnr', '?')
             rssi = packet.get('rxRssi', '?')
+            hop_limit = packet.get('hopLimit') # remaining hops?
+            hop_start = packet.get('hopStart') # starting number of hops?
+            if hop_limit and hop_start:
+                hops = int(hop_start) - int(hop_limit)
+            else:
+                hops = "?"
+                if not hop_start:
+                    hop_start = "?"
             logging.info(f'From: {from_long_name}')
 
             embed = discord.Embed(title="Message Received", description=packet['decoded']['text'], color=0x67ea94)
             embed.add_field(name="From Node", value=f"{from_long_name} ({packet['fromId']})", inline=True)
             embed.add_field(name="RxSNR / RxRSSI", value=f"{snr}dB / {rssi}dB", inline=True)
+            embed.add_field(name="Hops", value=f"{hops} / {hop_start}", inline=True)
             embed.set_footer(text=f"{current_time}")
 
             if packet['toId'] == '^all':
@@ -180,9 +189,10 @@ class MeshBot(discord.Client):
         elif interface_type == 'ble':
             ble_node = interface_info.get("ble_node")
             self.iface = meshtastic.ble_interface.BLEInterface(address=ble_node)
-            # raise NotImplementedError(f"BLE interface connection is not implemented yet")
         else:
             logging.info(f'Unsupported interface: {interface_type}')
+
+        # TODO maybe print my node info to discord or logger
 
         while not self.is_closed():
             counter += 1
