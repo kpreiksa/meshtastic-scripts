@@ -148,6 +148,9 @@ class MeshBot(discord.Client):
             except KeyError as e:
                 logging.error(e)
                 pass
+        if len(nodelist) == 1:
+            # no nodes found, change response
+            nodelist = [f'**No Nodes seen in teh last {time_limit} minutes**']
         # Split node list into chunks of 10 rows.
         nodelist_chunks = ["".join(nodelist[i:i + 10]) for i in range(0, len(nodelist), 10)]
         return nodelist_chunks
