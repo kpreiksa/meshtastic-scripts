@@ -113,9 +113,7 @@ def onReceiveMesh(packet, interface):  # Called when a packet arrives from mesh.
             else:
                 embed.add_field(name="To Node", value=f"{to_long_name} ({packet['toId']})", inline=True)
 
-            # TODO add number of Hops from iface.nodes
-
-            logging.info(f'Putting on Discord queue')
+            logging.info(f'Putting Mesh Received message on Discord queue')
             meshtodiscord.put(embed)
 
     except KeyError as e:  # Catch empty packet.
@@ -131,6 +129,8 @@ class MeshBot(discord.Client):
         self.iface = None  # Initialize iface as None.
         self.nodes = {}  # Init nodes list as empty dict
         self.battery_warning_sent = False # only send battery warning once
+        self.node_id_map = {}  # offline node map from id (hex) to everything else
+        self.channel = None
 
     async def setup_hook(self) -> None:  # Create the background task and run it in the background.
         self.bg_task = self.loop.create_task(self.background_task())
@@ -139,7 +139,35 @@ class MeshBot(discord.Client):
     async def on_ready(self):
         logging.info(f'Logged in as {self.user} (ID: {self.user.id})')
 
+# TODO add debuging function that dumps self.nodes into a json file on a hidden command?
+
+    def get_node_info_from_id(self, node_id):
+        if not node_id.startswith('!'):
+            node_id = '!' + node_id
+        return self.nodes.get(node_id, None)
+
+    def get_node_info_from_num(self, node_num):
+        node_id = '!' + hex(node_num)[2:]
+        return self.get_node_info_from_id(self, node_id)
+
+    def get_node_info_from_shortname(self, shortname):
+        nodes = [node_data for node_data in self.nodes.values() if node_data.get('user',{}).get('shortName',)==shortname]
+        if len(nodes) == 1:
+            return nodes[0]
+        else:
+            logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
+            return len(nodes)
+
+    def get_node_info_from_longname(self, longname):
+        nodes = [node_data for node_data in self.nodes.values() if node_data.get('user',{}).get('longName',)==longname]
+        if len(nodes) == 1:
+            return nodes[0]
+        else:
+            logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
+            return len(nodes)
+
     def get_active_nodes(self, time_limit=15): # must NOT be async or printing info takes forever (or never happens?)
+        # If time_limit is True, gets all nodes - BIG print
         logging.info(f'get_active_nodes has been called with: {time_limit}')
 
         # use self.nodes that was pulled 1m ago
@@ -225,7 +253,7 @@ class MeshBot(discord.Client):
     async def background_task(self):
         await self.wait_until_ready()
         counter = 0
-        channel = self.get_channel(dis_channel_id)
+        self.channel = self.get_channel(dis_channel_id)
         pub.subscribe(onReceiveMesh, "meshtastic.receive")
         pub.subscribe(onConnectionMesh, "meshtastic.connection.established")
         logging.info(f'Connecting with interface: {interface_type}')
@@ -269,9 +297,9 @@ class MeshBot(discord.Client):
             try:
                 meshmessage = meshtodiscord.get_nowait()
                 if isinstance(meshmessage, discord.Embed):
-                    await channel.send(embed=meshmessage)
+                    await self.channel.send(embed=meshmessage)
                 else:
-                    await channel.send(meshmessage)
+                    await self.channel.send(meshmessage)
                 meshtodiscord.task_done()
             except queue.Empty:
                 pass
@@ -296,12 +324,12 @@ class MeshBot(discord.Client):
                 nodelist_chunks = self.get_active_nodes(active_time)
                 # Sends node list if there are any.
                 for chunk in nodelist_chunks:
-                    await channel.send(chunk)
+                    await self.channel.send(chunk)
                 nodelistq.task_done()
             except queue.Empty:
                 pass
             try:
-                await self.check_battery(channel)
+                await self.check_battery(self.channel)
             except:
                 pass
             await asyncio.sleep(5)
@@ -325,10 +353,11 @@ async def help_command(interaction: discord.Interaction):
 
     # Base help text
     help_text = ("**Command List**\n"
+                 "`/send_shortname` - Send a message to another node.\n"
                  "`/sendid` - Send a message to another node.\n"
                  "`/sendnum` - Send a message to another node.\n"
                  "`/active` - Shows all active nodes. Default is 61\n"
-                 "`/all_nodes` - Shows all nodes.\n"
+                 "`/all_nodes` - Shows all nodes. WARNING: Potentially a lot of messages\n"
                  "`/help` - Shows this help message.\n")
 
     # Dynamically add channel commands based on mesh_channel_names
@@ -355,9 +384,7 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
 
         # Convert hexadecimal node ID to decimal
         nodenum = int(nodeid, 16)
-
         current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
-
         embed = discord.Embed(title="Sending Message", description=message, color=0x67ea94)
         embed.add_field(name="To Node:", value=f"!{nodeid}", inline=True)  # Add '!' in front of nodeid
         embed.set_footer(text=f"{current_time}")
@@ -373,10 +400,40 @@ async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
     logging.info(f'/sendnum command received. NodeNum: {nodenum}. Sending message: {message}')
     current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
     embed = discord.Embed(title="Sending Message", description=message, color=0x67ea94)
+    # TODO in the ToNode section, add in the shortname/longname
     embed.add_field(name="To Node:", value=str(nodenum), inline=True)
     embed.set_footer(text=f"{current_time}")
     await interaction.response.send_message(embed=embed)
     discordtomesh.put(f"nodenum={nodenum} {message}")
+
+@client.tree.command(name="send_shortname", description="Send a message to a specific node.")
+async def send_shortname(interaction: discord.Interaction, node_name: str, message: str):
+    logging.info(f'/send_shortname command received. nodeName: {node_name}. Sending message: {message}')
+
+
+    current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
+    node = client.get_node_info_from_shortname(node_name)
+    if isinstance(node, dict):
+        shortname = node.get('user',{}).get('shortName','???')
+        longname = node.get('user',{}).get('longName','???')
+        node_id = node.get('user',{}).get('id','???')
+        nodenum = node.get('num')
+        embed = discord.Embed(title="Sending Message", description=message, color=0x67ea94)
+        embed.add_field(name="To Node:", value=f'{node_id} - {shortname} --- {longname}', inline=True)
+        embed.set_footer(text=f"{current_time}")
+        await interaction.response.send_message(embed=embed)
+        discordtomesh.put(f"nodenum={nodenum} {message}")
+    elif isinstance(node, int):
+        if node == 0:
+            embed = discord.Embed(title="Could not send message", description=f'Unable to find node with short name: {node_name}.\nMessage not sent.')
+            await interaction.response.send_message(embed=embed)
+        else:
+            embed = discord.Embed(title="Could not send message", description=f'Found too many nodes named {node_name}. Nodes found: {node}.\nMessage not sent.')
+            await interaction.response.send_message(embed=embed)
+    else:
+        embed = discord.Embed(title="Could not send message", description=f"Unknown error, couldn't send the message")
+        await interaction.response.send_message(embed=embed)
+        # don't put anything on discordtomesh
 
 # Dynamically create commands based on mesh_channel_names
 for mesh_channel_index, mesh_channel_name in mesh_channel_names.items():
