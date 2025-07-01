@@ -131,6 +131,7 @@ class MeshBot(discord.Client):
         self.battery_warning_sent = False # only send battery warning once
         self.node_id_map = {}  # offline node map from id (hex) to everything else
         self.channel = None
+        self.dis_channel_id = dis_channel_id
 
     async def setup_hook(self) -> None:  # Create the background task and run it in the background.
         self.bg_task = self.loop.create_task(self.background_task())
@@ -165,6 +166,9 @@ class MeshBot(discord.Client):
         else:
             logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
             return len(nodes)
+
+    def check_channel_id(self, other_channel_id):
+        return other_channel_id == self.dis_channel_id
 
     def get_active_nodes(self, time_limit=15): # must NOT be async or printing info takes forever (or never happens?)
         # If time_limit is True, gets all nodes - BIG print
@@ -253,7 +257,7 @@ class MeshBot(discord.Client):
     async def background_task(self):
         await self.wait_until_ready()
         counter = 0
-        self.channel = self.get_channel(dis_channel_id)
+        self.channel = self.get_channel(self.dis_channel_id)
         pub.subscribe(onReceiveMesh, "meshtastic.receive")
         pub.subscribe(onConnectionMesh, "meshtastic.connection.established")
         logging.info(f'Connecting with interface: {interface_type}')
@@ -348,125 +352,167 @@ client = MeshBot(intents=discord.Intents.default())
 
 @client.tree.command(name="help", description="Shows the help message.")
 async def help_command(interaction: discord.Interaction):
-    logging.info(f'/help command recieved')
-    await interaction.response.defer(ephemeral=False)
 
-    # Base help text
-    help_text = ("**Command List**\n"
-                 "`/send_shortname` - Send a message to another node.\n"
-                 "`/sendid` - Send a message to another node.\n"
-                 "`/sendnum` - Send a message to another node.\n"
-                 "`/active` - Shows all active nodes. Default is 61\n"
-                 "`/all_nodes` - Shows all nodes. WARNING: Potentially a lot of messages\n"
-                 "`/help` - Shows this help message.\n")
+    # Check channel_id
+    if interaction.channel_id != client.dis_channel_id:
+        # post rejection
+        embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    else:
+        logging.info(f'/help command recieved')
+        await interaction.response.defer(ephemeral=False)
 
-    # Dynamically add channel commands based on mesh_channel_names
-    for mesh_channel_index, channel_name in mesh_channel_names.items():
-        help_text += f"`/{channel_name.lower()}` - Send a message in the {channel_name} channel.\n"
+        # Base help text
+        help_text = ("**Command List**\n"
+                    "`/send_shortname` - Send a message to another node.\n"
+                    "`/sendid` - Send a message to another node.\n"
+                    "`/sendnum` - Send a message to another node.\n"
+                    "`/active` - Shows all active nodes. Default is 61\n"
+                    "`/all_nodes` - Shows all nodes. WARNING: Potentially a lot of messages\n"
+                    "`/help` - Shows this help message.\n")
 
-    color = 0x67ea94
+        # Dynamically add channel commands based on mesh_channel_names
+        for mesh_channel_index, channel_name in mesh_channel_names.items():
+            help_text += f"`/{channel_name.lower()}` - Send a message in the {channel_name} channel.\n"
 
-    embed = discord.Embed(title="Meshtastic Bot Help", description=help_text, color=color)
-    embed.set_footer(text="Meshtastic Discord Bot by Kavitate")
-    ascii_art_image_url = "https://i.imgur.com/qvo2NkW.jpeg"
-    embed.set_image(url=ascii_art_image_url)
+        color = 0x67ea94
 
-    view = HelpView()
-    await interaction.followup.send(embed=embed, view=view)
+        embed = discord.Embed(title="Meshtastic Bot Help", description=help_text, color=color)
+        embed.set_footer(text="Meshtastic Discord Bot by Kavitate")
+        ascii_art_image_url = "https://i.imgur.com/qvo2NkW.jpeg"
+        embed.set_image(url=ascii_art_image_url)
+
+        view = HelpView()
+        await interaction.followup.send(embed=embed, view=view)
 
 @client.tree.command(name="sendid", description="Send a message to a specific node.")
 async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
-    logging.info(f'/sendid command received. ID: {nodeid}. Message: {message}. Attempting to send')
-    try:
-        # Strip the leading '!' if present
-        if nodeid.startswith('!'):
-            nodeid = nodeid[1:]
+    # Check channel_id
+    if interaction.channel_id != client.dis_channel_id:
+        # post rejection
+        embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    else:
+        logging.info(f'/sendid command received. ID: {nodeid}. Message: {message}. Attempting to send')
+        try:
+            # Strip the leading '!' if present
+            if nodeid.startswith('!'):
+                nodeid = nodeid[1:]
 
-        # Convert hexadecimal node ID to decimal
-        nodenum = int(nodeid, 16)
-        current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
-        embed = discord.Embed(title="Sending Message", description=message, color=0x67ea94)
-        embed.add_field(name="To Node:", value=f"!{nodeid}", inline=True)  # Add '!' in front of nodeid
-        embed.set_footer(text=f"{current_time}")
-        await interaction.response.send_message(embed=embed, ephemeral=False)
-        discordtomesh.put(f"nodenum={nodenum} {message}")
-    except ValueError as e:
-        error_embed = discord.Embed(title="Error", description="Invalid hexadecimal node ID.", color=0x67ea94)
-        logging.info(f'/sendid command failed. Invalid hexadecimal node id. Error: {e}')
-        await interaction.response.send_message(embed=error_embed, ephemeral=True)
+            # Convert hexadecimal node ID to decimal
+            nodenum = int(nodeid, 16)
+            current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
+            embed = discord.Embed(title="Sending Message", description=message, color=0x67ea94)
+            embed.add_field(name="To Node:", value=f"!{nodeid}", inline=True)  # Add '!' in front of nodeid
+            embed.set_footer(text=f"{current_time}")
+            await interaction.response.send_message(embed=embed, ephemeral=False)
+            discordtomesh.put(f"nodenum={nodenum} {message}")
+        except ValueError as e:
+            error_embed = discord.Embed(title="Error", description="Invalid hexadecimal node ID.", color=0x67ea94)
+            logging.info(f'/sendid command failed. Invalid hexadecimal node id. Error: {e}')
+            await interaction.response.send_message(embed=error_embed, ephemeral=True)
 
 @client.tree.command(name="sendnum", description="Send a message to a specific node.")
 async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
-    logging.info(f'/sendnum command received. NodeNum: {nodenum}. Sending message: {message}')
-    current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
-    embed = discord.Embed(title="Sending Message", description=message, color=0x67ea94)
-    # TODO in the ToNode section, add in the shortname/longname
-    embed.add_field(name="To Node:", value=str(nodenum), inline=True)
-    embed.set_footer(text=f"{current_time}")
-    await interaction.response.send_message(embed=embed)
-    discordtomesh.put(f"nodenum={nodenum} {message}")
-
-@client.tree.command(name="send_shortname", description="Send a message to a specific node.")
-async def send_shortname(interaction: discord.Interaction, node_name: str, message: str):
-    logging.info(f'/send_shortname command received. nodeName: {node_name}. Sending message: {message}')
-
-
-    current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
-    node = client.get_node_info_from_shortname(node_name)
-    if isinstance(node, dict):
-        shortname = node.get('user',{}).get('shortName','???')
-        longname = node.get('user',{}).get('longName','???')
-        node_id = node.get('user',{}).get('id','???')
-        nodenum = node.get('num')
+    # Check channel_id
+    if interaction.channel_id != client.dis_channel_id:
+        # post rejection
+        embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    else:
+        logging.info(f'/sendnum command received. NodeNum: {nodenum}. Sending message: {message}')
+        current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
         embed = discord.Embed(title="Sending Message", description=message, color=0x67ea94)
-        embed.add_field(name="To Node:", value=f'{node_id} - {shortname} --- {longname}', inline=True)
+        # TODO in the ToNode section, add in the shortname/longname
+        embed.add_field(name="To Node:", value=str(nodenum), inline=True)
         embed.set_footer(text=f"{current_time}")
         await interaction.response.send_message(embed=embed)
         discordtomesh.put(f"nodenum={nodenum} {message}")
-    elif isinstance(node, int):
-        if node == 0:
-            embed = discord.Embed(title="Could not send message", description=f'Unable to find node with short name: {node_name}.\nMessage not sent.')
-            await interaction.response.send_message(embed=embed)
-        else:
-            embed = discord.Embed(title="Could not send message", description=f'Found too many nodes named {node_name}. Nodes found: {node}.\nMessage not sent.')
-            await interaction.response.send_message(embed=embed)
+
+@client.tree.command(name="send_shortname", description="Send a message to a specific node.")
+async def send_shortname(interaction: discord.Interaction, node_name: str, message: str):
+    # Check channel_id
+    if interaction.channel_id != client.dis_channel_id:
+        # post rejection
+        embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
+        await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
-        embed = discord.Embed(title="Could not send message", description=f"Unknown error, couldn't send the message")
-        await interaction.response.send_message(embed=embed)
-        # don't put anything on discordtomesh
+        logging.info(f'/send_shortname command received. nodeName: {node_name}. Sending message: {message}')
+
+        current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
+        node = client.get_node_info_from_shortname(node_name)
+        if isinstance(node, dict):
+            shortname = node.get('user',{}).get('shortName','???')
+            longname = node.get('user',{}).get('longName','???')
+            node_id = node.get('user',{}).get('id','???')
+            nodenum = node.get('num')
+            embed = discord.Embed(title="Sending Message", description=message, color=0x67ea94)
+            embed.add_field(name="To Node:", value=f'{node_id} - {shortname} --- {longname}', inline=True)
+            embed.set_footer(text=f"{current_time}")
+            await interaction.response.send_message(embed=embed)
+            discordtomesh.put(f"nodenum={nodenum} {message}")
+        elif isinstance(node, int):
+            if node == 0:
+                embed = discord.Embed(title="Could not send message", description=f'Unable to find node with short name: {node_name}.\nMessage not sent.')
+                await interaction.response.send_message(embed=embed)
+            else:
+                embed = discord.Embed(title="Could not send message", description=f'Found too many nodes named {node_name}. Nodes found: {node}.\nMessage not sent.')
+                await interaction.response.send_message(embed=embed)
+        else:
+            embed = discord.Embed(title="Could not send message", description=f"Unknown error, couldn't send the message")
+            await interaction.response.send_message(embed=embed)
+            # don't put anything on discordtomesh
 
 # Dynamically create commands based on mesh_channel_names
 for mesh_channel_index, mesh_channel_name in mesh_channel_names.items():
     @client.tree.command(name=mesh_channel_name.lower(), description=f"Send a message in the {mesh_channel_name} channel.")
     async def send_channel_message(interaction: discord.Interaction, message: str, mesh_channel_index: int = mesh_channel_index):
-        logging.info(f'/{mesh_channel_name} command received. Sending message: {message}')
-        current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
-        embed = discord.Embed(title=f"Sending Message to {mesh_channel_names[mesh_channel_index]}:", description=message, color=0x67ea94)
-        embed.set_footer(text=f"{current_time}")
-        await interaction.response.send_message(embed=embed)
-        discordtomesh.put(f"channel={mesh_channel_index} {message}")
+        # Check channel_id
+        if interaction.channel_id != client.dis_channel_id:
+            # post rejection
+            embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        else:
+            logging.info(f'/{mesh_channel_name} command received. Sending message: {message}')
+            current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
+            embed = discord.Embed(title=f"Sending Message to {mesh_channel_names[mesh_channel_index]}:", description=message, color=0x67ea94)
+            embed.set_footer(text=f"{current_time}")
+            await interaction.response.send_message(embed=embed)
+            discordtomesh.put(f"channel={mesh_channel_index} {message}")
 
 @client.tree.command(name="active", description="Lists all active nodes.")
 async def active(interaction: discord.Interaction, active_time: str='61'):
-    await interaction.response.defer()
+    # Check channel_id
+    if interaction.channel_id != client.dis_channel_id:
+        # post rejection
+        embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    else:
+        await interaction.response.defer()
 
-    logging.info(f'/active received, sending to queue with time: {active_time}')
-    nodelistq.put(active_time) # sets queue to the time, background task then executes - this should prob be changed
+        logging.info(f'/active received, sending to queue with time: {active_time}')
+        nodelistq.put(active_time) # sets queue to the time, background task then executes - this should prob be changed
 
-    await asyncio.sleep(1)
+        await asyncio.sleep(1)
 
-    await interaction.delete_original_response()
+        await interaction.delete_original_response()
 
 @client.tree.command(name="all_nodes", description="Lists all nodes.")
 async def all_nodes(interaction: discord.Interaction):
-    await interaction.response.defer()
+    # Check channel_id
+    if interaction.channel_id != client.dis_channel_id:
+        # post rejection
+        embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    else:
+        await interaction.response.defer()
 
-    logging.info(f'/all_node received, sending to queue with value: True')
-    nodelistq.put(True) # sets queue to true, background task then executes - this should prob be changed
+        logging.info(f'/all_node received, sending to queue with value: True')
+        nodelistq.put(True) # sets queue to true, background task then executes - this should prob be changed
 
-    await asyncio.sleep(1)
+        await asyncio.sleep(1)
 
-    await interaction.delete_original_response()
+        await interaction.delete_original_response()
 
 def run_discord_bot():
     try:
