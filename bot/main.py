@@ -43,6 +43,7 @@ def load_config():
 config = load_config()
 
 color = 0x67ea94  # Meshtastic Green
+red_color = 0xed4245
 
 token = config["discord_bot_token"]
 channel_id = int(config["discord_channel_id"])
@@ -54,6 +55,8 @@ interface_type = interface_info.get("method", "serial")
 meshtodiscord = queue.Queue(maxsize=20) # queue for sending info to discord (when message received on mesh, process then throw in this queue for discord)
 discordtomesh = queue.Queue(maxsize=20) # queue for all send-message types (sendid, sendnum or to a specific channel)
 nodelistq = queue.Queue(maxsize=20) # queue for /active command
+
+battery_warning = 15
 
 def onConnectionMesh(interface, topic=pub.AUTO_TOPIC):
     logging.info(interface.myInfo) # TODO log more info about my node here
@@ -127,6 +130,7 @@ class MeshBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.iface = None  # Initialize iface as None.
         self.nodes = {}  # Init nodes list as empty dict
+        self.battery_warning_sent = False # only send battery warning once
 
     async def setup_hook(self) -> None:  # Create the background task and run it in the background.
         self.bg_task = self.loop.create_task(self.background_task())
@@ -194,6 +198,30 @@ class MeshBot(discord.Client):
         nodelist_chunks = ["".join(nodelist_sorted[i:i + 10]) for i in range(0, len(nodelist_sorted), 10)]
         return nodelist_chunks
 
+    async def check_battery(self, channel, battery_warning=battery_warning):
+        # runs every minute, not eff but idk what else to do
+
+        myNodeInfo = self.iface.getMyNodeInfo()
+        shortname = myNodeInfo.get('user',{}).get('shortName','???')
+        longname = myNodeInfo.get('user',{}).get('longName','???')
+        battery_level = myNodeInfo.get('deviceMetrics',{}).get('batteryLevel',100)
+        if battery_level > battery_warning:
+            self.battery_warning_sent = False
+        elif self.battery_warning_sent is False:
+            logging.info(f'Battery is below threshold, sending message to discord')
+            self.battery_warning_sent = True
+            # send message to discord
+            text = (
+                f"**NodeName:** {shortname} --- {longname}\n"
+                f"**Battery Level:** {battery_level}%"
+            )
+            embed = discord.Embed(
+                title='Node Battery Low!',
+                description=text,
+                color=red_color
+            )
+            await channel.send(embed=embed)
+
     async def background_task(self):
         await self.wait_until_ready()
         counter = 0
@@ -226,14 +254,10 @@ class MeshBot(discord.Client):
         else:
             logging.info(f'Unsupported interface: {interface_type}')
 
-        # this isn't working on ble, idk if it'll work on tcp. It does work in ipython
-        # await asyncio.sleep(10)
-        # myinfo = self.iface.getMyUser()
-        # shortname = myinfo.get('user',{}).get('shortName','???')
-        # longname = myinfo.get('user',{}).get('longName','???')
-        # logging.info(f'Bot connected to Mesh node: {shortname} - {longname} with connection {interface_type}')
-
-        # TODO maybe print my node info to discord or logger
+        myinfo = self.iface.getMyUser()
+        shortname = myinfo.get('shortName','???')
+        longname = myinfo.get('longName','???')
+        logging.info(f'Bot connected to Mesh node: {shortname} --- {longname} with connection {interface_type}')
 
         while not self.is_closed():
             counter += 1
@@ -269,12 +293,16 @@ class MeshBot(discord.Client):
                 pass
             try:
                 active_time = nodelistq.get_nowait()
-                nodelist_chuncks = self.get_active_nodes(active_time)
+                nodelist_chunks = self.get_active_nodes(active_time)
                 # Sends node list if there are any.
-                for chunk in nodelist_chuncks:
+                for chunk in nodelist_chunks:
                     await channel.send(chunk)
                 nodelistq.task_done()
             except queue.Empty:
+                pass
+            try:
+                await self.check_battery(channel)
+            except:
                 pass
             await asyncio.sleep(5)
 
