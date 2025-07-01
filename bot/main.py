@@ -46,8 +46,8 @@ color = 0x67ea94  # Meshtastic Green
 red_color = 0xed4245
 
 token = config["discord_bot_token"]
-channel_id = int(config["discord_channel_id"])
-channel_names = config["channel_names"]
+dis_channel_id = int(config["discord_channel_id"])
+mesh_channel_names = config["channel_names"]
 time_zone = config["time_zone"]
 interface_info = config.get("interface_info", {})
 interface_type = interface_info.get("method", "serial")
@@ -74,16 +74,16 @@ def onReceiveMesh(packet, interface):  # Called when a packet arrives from mesh.
 
             # Check if 'channel' is present in the top-level packet.
             if 'channel' in packet:
-                channel_index = packet['channel']
+                mesh_channel_index = packet['channel']
             else:
                 # Check if 'channel' is present in the decoded packet.
                 if 'channel' in packet['decoded']:
-                    channel_index = packet['decoded']['channel']
+                    mesh_channel_index = packet['decoded']['channel']
                 else:
-                    channel_index = 0  # Default to channel 0 if not present.
+                    mesh_channel_index = 0  # Default to channel 0 if not present.
                     logging.info("Channel not found in packet, defaulting to channel 0") # For debugging.
 
-            channel_name = channel_names.get(channel_index, f"Unknown Channel ({channel_index})")
+            mesh_channel_name = mesh_channel_names.get(mesh_channel_index, f"Unknown Channel ({mesh_channel_index})")
 
             current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
 
@@ -109,7 +109,7 @@ def onReceiveMesh(packet, interface):  # Called when a packet arrives from mesh.
             embed.set_footer(text=f"{current_time}")
 
             if packet['toId'] == '^all':
-                embed.add_field(name="To Channel", value=channel_name, inline=True)
+                embed.add_field(name="To Channel", value=mesh_channel_name, inline=True)
             else:
                 embed.add_field(name="To Node", value=f"{to_long_name} ({packet['toId']})", inline=True)
 
@@ -225,7 +225,7 @@ class MeshBot(discord.Client):
     async def background_task(self):
         await self.wait_until_ready()
         counter = 0
-        channel = self.get_channel(channel_id)
+        channel = self.get_channel(dis_channel_id)
         pub.subscribe(onReceiveMesh, "meshtastic.receive")
         pub.subscribe(onConnectionMesh, "meshtastic.connection.established")
         logging.info(f'Connecting with interface: {interface_type}')
@@ -278,9 +278,9 @@ class MeshBot(discord.Client):
             try:
                 meshmessage = discordtomesh.get_nowait()
                 if meshmessage.startswith('channel='):
-                    channel_index = int(meshmessage[8:meshmessage.find(' ')])
+                    mesh_channel_index = int(meshmessage[8:meshmessage.find(' ')])
                     message = meshmessage[meshmessage.find(' ') + 1:]
-                    self.iface.sendText(message, channelIndex=channel_index)
+                    self.iface.sendText(message, channelIndex=mesh_channel_index)
                 elif meshmessage.startswith('nodenum='):
                     nodenum = int(meshmessage[8:meshmessage.find(' ')])
                     message = meshmessage[meshmessage.find(' ') + 1:]
@@ -320,6 +320,7 @@ client = MeshBot(intents=discord.Intents.default())
 
 @client.tree.command(name="help", description="Shows the help message.")
 async def help_command(interaction: discord.Interaction):
+    logging.info(f'/help command recieved')
     await interaction.response.defer(ephemeral=False)
 
     # Base help text
@@ -330,8 +331,8 @@ async def help_command(interaction: discord.Interaction):
                  "`/all_nodes` - Shows all nodes.\n"
                  "`/help` - Shows this help message.\n")
 
-    # Dynamically add channel commands based on channel_names
-    for channel_index, channel_name in channel_names.items():
+    # Dynamically add channel commands based on mesh_channel_names
+    for mesh_channel_index, channel_name in mesh_channel_names.items():
         help_text += f"`/{channel_name.lower()}` - Send a message in the {channel_name} channel.\n"
 
     color = 0x67ea94
@@ -346,6 +347,7 @@ async def help_command(interaction: discord.Interaction):
 
 @client.tree.command(name="sendid", description="Send a message to a specific node.")
 async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
+    logging.info(f'/sendid command received. ID: {nodeid}. Message: {message}. Attempting to send')
     try:
         # Strip the leading '!' if present
         if nodeid.startswith('!'):
@@ -361,29 +363,31 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
         embed.set_footer(text=f"{current_time}")
         await interaction.response.send_message(embed=embed, ephemeral=False)
         discordtomesh.put(f"nodenum={nodenum} {message}")
-    except ValueError:
+    except ValueError as e:
         error_embed = discord.Embed(title="Error", description="Invalid hexadecimal node ID.", color=0x67ea94)
+        logging.info(f'/sendid command failed. Invalid hexadecimal node id. Error: {e}')
         await interaction.response.send_message(embed=error_embed, ephemeral=True)
 
 @client.tree.command(name="sendnum", description="Send a message to a specific node.")
 async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
+    logging.info(f'/sendnum command received. NodeNum: {nodenum}. Sending message: {message}')
     current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
-
     embed = discord.Embed(title="Sending Message", description=message, color=0x67ea94)
     embed.add_field(name="To Node:", value=str(nodenum), inline=True)
     embed.set_footer(text=f"{current_time}")
     await interaction.response.send_message(embed=embed)
     discordtomesh.put(f"nodenum={nodenum} {message}")
 
-# Dynamically create commands based on channel_names
-for channel_index, channel_name in channel_names.items():
-    @client.tree.command(name=channel_name.lower(), description=f"Send a message in the {channel_name} channel.")
-    async def send_channel_message(interaction: discord.Interaction, message: str, channel_index: int = channel_index):
+# Dynamically create commands based on mesh_channel_names
+for mesh_channel_index, mesh_channel_name in mesh_channel_names.items():
+    @client.tree.command(name=mesh_channel_name.lower(), description=f"Send a message in the {mesh_channel_name} channel.")
+    async def send_channel_message(interaction: discord.Interaction, message: str, mesh_channel_index: int = mesh_channel_index):
+        logging.info(f'/{mesh_channel_name} command received. Sending message: {message}')
         current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
-        embed = discord.Embed(title=f"Sending Message to {channel_names[channel_index]}:", description=message, color=0x67ea94)
+        embed = discord.Embed(title=f"Sending Message to {mesh_channel_names[mesh_channel_index]}:", description=message, color=0x67ea94)
         embed.set_footer(text=f"{current_time}")
         await interaction.response.send_message(embed=embed)
-        discordtomesh.put(f"channel={channel_index} {message}")
+        discordtomesh.put(f"channel={mesh_channel_index} {message}")
 
 @client.tree.command(name="active", description="Lists all active nodes.")
 async def active(interaction: discord.Interaction, active_time: str='61'):
