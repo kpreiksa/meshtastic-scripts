@@ -145,7 +145,7 @@ class MeshBot(discord.Client):
     def get_node_info_from_id(self, node_id):
         if not node_id.startswith('!'):
             node_id = '!' + node_id
-        return self.nodes.get(node_id, None)
+        return self.nodes.get(node_id, {})
 
     def get_node_info_from_num(self, node_num):
         node_id = '!' + hex(node_num)[2:]
@@ -172,7 +172,10 @@ class MeshBot(discord.Client):
 
     def get_active_nodes(self, time_limit=15): # must NOT be async or printing info takes forever (or never happens?)
         # If time_limit is True, gets all nodes - BIG print
-        logging.info(f'get_active_nodes has been called with: {time_limit}')
+        if time_limit == True:
+            logging.info(f'get_active_nodes has been called with: True (all nodes)')
+        else:
+            logging.info(f'get_active_nodes has been called with: {time_limit} mins')
 
         # use self.nodes that was pulled 1m ago
         nodelist = []
@@ -207,11 +210,11 @@ class MeshBot(discord.Client):
 
                 if time_limit == True:
                     # list all nodes
-                    nodelist.append([f"\n {id} | {shortname} --- {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
+                    nodelist.append([f"\n {id} | {shortname} | {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
                 else:
                     # check if they are greater then the time limit
                     if ts > time.time() - (time_limit * 60):
-                        nodelist.append([f"\n {id} | {shortname} --- {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
+                        nodelist.append([f"\n {id} | {shortname} | {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
 
             except KeyError as e:
                 logging.error(e)
@@ -244,7 +247,7 @@ class MeshBot(discord.Client):
             self.battery_warning_sent = True
             # send message to discord
             text = (
-                f"**NodeName:** {shortname} --- {longname}\n"
+                f"**NodeName:** {shortname} | {longname}\n"
                 f"**Battery Level:** {battery_level}%"
             )
             embed = discord.Embed(
@@ -289,7 +292,7 @@ class MeshBot(discord.Client):
         myinfo = self.iface.getMyUser()
         shortname = myinfo.get('shortName','???')
         longname = myinfo.get('longName','???')
-        logging.info(f'Bot connected to Mesh node: {shortname} --- {longname} with connection {interface_type}')
+        logging.info(f'Bot connected to Mesh node: {shortname} | {longname} with connection {interface_type}')
 
         while not self.is_closed():
             counter += 1
@@ -356,6 +359,7 @@ async def help_command(interaction: discord.Interaction):
     # Check channel_id
     if interaction.channel_id != client.dis_channel_id:
         # post rejection
+        logging.info(f'Rejected /help Command - Sent on wrong discord channel')
         embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
         await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
@@ -390,6 +394,7 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
     # Check channel_id
     if interaction.channel_id != client.dis_channel_id:
         # post rejection
+        logging.info(f'Rejected /sendid Command - Sent on wrong discord channel')
         embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
         await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
@@ -398,13 +403,19 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
             # Strip the leading '!' if present
             if nodeid.startswith('!'):
                 nodeid = nodeid[1:]
+            # get additional node info
+            node = client.get_node_info_from_id(nodeid)
+            shortname = node.get('user',{}).get('shortName','???')
+            longname = node.get('user',{}).get('longName','???')
 
             # Convert hexadecimal node ID to decimal
             nodenum = int(nodeid, 16)
             current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
+            # craft message
             embed = discord.Embed(title="Sending Message", description=message, color=0x67ea94)
-            embed.add_field(name="To Node:", value=f"!{nodeid}", inline=True)  # Add '!' in front of nodeid
+            embed.add_field(name="To Node:", value=f'!{nodeid} | {shortname} | {longname}', inline=True)  # Add '!' in front of nodeid
             embed.set_footer(text=f"{current_time}")
+            # send message
             await interaction.response.send_message(embed=embed, ephemeral=False)
             discordtomesh.put(f"nodenum={nodenum} {message}")
         except ValueError as e:
@@ -417,15 +428,22 @@ async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
     # Check channel_id
     if interaction.channel_id != client.dis_channel_id:
         # post rejection
+        logging.info(f'Rejected /sendnum Command - Sent on wrong discord channel')
         embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
         await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
         logging.info(f'/sendnum command received. NodeNum: {nodenum}. Sending message: {message}')
+        # get additional node info
+        node = client.get_node_info_from_num(nodenum)
+        shortname = node.get('user',{}).get('shortName','???')
+        longname = node.get('user',{}).get('longName','???')
+        node_id = node.get('user',{}).get('id','???')
+        # craft message
         current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
         embed = discord.Embed(title="Sending Message", description=message, color=0x67ea94)
-        # TODO in the ToNode section, add in the shortname/longname
-        embed.add_field(name="To Node:", value=str(nodenum), inline=True)
+        embed.add_field(name="To Node:", value=f'{nodenum} | {node_id} | {shortname} | {longname}', inline=True)
         embed.set_footer(text=f"{current_time}")
+        # send message
         await interaction.response.send_message(embed=embed)
         discordtomesh.put(f"nodenum={nodenum} {message}")
 
@@ -434,6 +452,7 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
     # Check channel_id
     if interaction.channel_id != client.dis_channel_id:
         # post rejection
+        logging.info(f'Rejected /send_shortname Command - Sent on wrong discord channel')
         embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
         await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
@@ -442,16 +461,20 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
         current_time = datetime.now().strftime('%d %B %Y %I:%M:%S %p')
         node = client.get_node_info_from_shortname(node_name)
         if isinstance(node, dict):
+            # get additional node info
             shortname = node.get('user',{}).get('shortName','???')
             longname = node.get('user',{}).get('longName','???')
             node_id = node.get('user',{}).get('id','???')
             nodenum = node.get('num')
+            # craft message
             embed = discord.Embed(title="Sending Message", description=message, color=0x67ea94)
-            embed.add_field(name="To Node:", value=f'{node_id} - {shortname} --- {longname}', inline=True)
+            embed.add_field(name="To Node:", value=f'{node_id} | {shortname} | {longname}', inline=True)
             embed.set_footer(text=f"{current_time}")
+            # send message
             await interaction.response.send_message(embed=embed)
             discordtomesh.put(f"nodenum={nodenum} {message}")
         elif isinstance(node, int):
+            # if node is an int, there was an error, send an error message
             if node == 0:
                 embed = discord.Embed(title="Could not send message", description=f'Unable to find node with short name: {node_name}.\nMessage not sent.')
                 await interaction.response.send_message(embed=embed)
@@ -470,6 +493,7 @@ for mesh_channel_index, mesh_channel_name in mesh_channel_names.items():
         # Check channel_id
         if interaction.channel_id != client.dis_channel_id:
             # post rejection
+            logging.info(f'Rejected /<channel> Command - Sent on wrong discord channel')
             embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
@@ -485,6 +509,7 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
     # Check channel_id
     if interaction.channel_id != client.dis_channel_id:
         # post rejection
+        logging.info(f'Rejected /active Command - Sent on wrong discord channel')
         embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
         await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
@@ -502,6 +527,7 @@ async def all_nodes(interaction: discord.Interaction):
     # Check channel_id
     if interaction.channel_id != client.dis_channel_id:
         # post rejection
+        logging.info(f'Rejected /all_nodes Command - Sent on wrong discord channel')
         embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
         await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
