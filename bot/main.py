@@ -254,9 +254,9 @@ class MeshBot(discord.Client):
         shortname = self.myNodeInfo.get('user',{}).get('shortName','???')
         longname = self.myNodeInfo.get('user',{}).get('longName','???')
         battery_level = self.myNodeInfo.get('deviceMetrics',{}).get('batteryLevel',100)
-        if battery_level > battery_warning:
+        if battery_level > (battery_warning + battery_level/2):
             self.battery_warning_sent = False
-        elif self.battery_warning_sent is False:
+        elif self.battery_warning_sent is False and battery_level < battery_warning:
             logging.info(f'Battery is below threshold, sending message to discord')
             self.battery_warning_sent = True
             # send message to discord
