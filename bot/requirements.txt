@@ -1,3 +1,5 @@
 discord
 meshtastic
 requests
+pytz
+pubsub

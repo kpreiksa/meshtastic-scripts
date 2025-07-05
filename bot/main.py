@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import queue
+import os
 import sys
 import time
 from datetime import datetime
@@ -15,11 +16,12 @@ import meshtastic.tcp_interface
 import pytz
 from pubsub import pub
 
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler("debug.log"),
+        logging.FileHandler(os.path.join('meshtastic-discord-bot.log')),
         logging.StreamHandler()
     ]
 )
