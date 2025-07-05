@@ -16,17 +16,30 @@ import meshtastic.tcp_interface
 import pytz
 from pubsub import pub
 
+# TODO add try/except for Bleaker dbus error and for ble disconnection (heartbeat error?)
+
+# env var params - ie from docker
+IS_DOCKER = os.environ.get('IS_DOCKER')
+
+# other params?
+
+log_file = 'meshtastic-discord-bot.log'
+if IS_DOCKER:
+    log_dir = 'config'
+else:
+    log_dir = '.'
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler(os.path.join('meshtastic-discord-bot.log')),
+        logging.FileHandler(os.path.join(log_dir, log_file)),
         logging.StreamHandler()
     ]
 )
 
 def load_config():
+    # TODO change this to look for config.json and if its not there, use env vars
     try:
         with open("config.json", "r") as config_file:
             config = json.load(config_file)
@@ -61,7 +74,7 @@ nodelistq = queue.Queue(maxsize=20) # queue for /active command
 battery_warning = 15
 
 def onConnectionMesh(interface, topic=pub.AUTO_TOPIC):
-    logging.info(interface.myInfo) # TODO log more info about my node here
+    logging.info(interface.myInfo)
 
 def get_long_name(node_id, nodes):
     if node_id in nodes:
@@ -128,7 +141,9 @@ class MeshBot(discord.Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.tree = app_commands.CommandTree(self)
+        # TODO maybe move the mesh parts into a separate class or dict to not possibly conflict with discord.Client super class
         self.iface = None  # Initialize iface as None.
+        self.myNodeInfo = None
         self.nodes = {}  # Init nodes list as empty dict
         self.battery_warning_sent = False # only send battery warning once
         self.node_id_map = {}  # offline node map from id (hex) to everything else
@@ -141,8 +156,6 @@ class MeshBot(discord.Client):
 
     async def on_ready(self):
         logging.info(f'Logged in as {self.user} (ID: {self.user.id})')
-
-# TODO add debuging function that dumps self.nodes into a json file on a hidden command?
 
     def get_node_info_from_id(self, node_id):
         if not node_id.startswith('!'):
@@ -238,10 +251,9 @@ class MeshBot(discord.Client):
     async def check_battery(self, channel, battery_warning=battery_warning):
         # runs every minute, not eff but idk what else to do
 
-        myNodeInfo = self.iface.getMyNodeInfo()
-        shortname = myNodeInfo.get('user',{}).get('shortName','???')
-        longname = myNodeInfo.get('user',{}).get('longName','???')
-        battery_level = myNodeInfo.get('deviceMetrics',{}).get('batteryLevel',100)
+        shortname = self.myNodeInfo.get('user',{}).get('shortName','???')
+        longname = self.myNodeInfo.get('user',{}).get('longName','???')
+        battery_level = self.myNodeInfo.get('deviceMetrics',{}).get('batteryLevel',100)
         if battery_level > battery_warning:
             self.battery_warning_sent = False
         elif self.battery_warning_sent is False:
@@ -302,7 +314,7 @@ class MeshBot(discord.Client):
             # save nodelist to self, so its available for pulling active nodes
             if (counter % 12 == 1):
                 self.nodes = self.iface.nodes
-
+                self.myNodeInfo = self.iface.getMyNodeInfo()
             try:
                 meshmessage = meshtodiscord.get_nowait()
                 if isinstance(meshmessage, discord.Embed):
@@ -375,7 +387,8 @@ async def help_command(interaction: discord.Interaction):
                     "`/sendnum` - Send a message to another node.\n"
                     "`/active` - Shows all active nodes. Default is 61\n"
                     "`/all_nodes` - Shows all nodes. WARNING: Potentially a lot of messages\n"
-                    "`/help` - Shows this help message.\n")
+                    "`/help` - Shows this help message.\n"
+                    "`/debug` - Shows information this bot's mesh node\n")
 
         # Dynamically add channel commands based on mesh_channel_names
         for mesh_channel_index, channel_name in mesh_channel_names.items():
@@ -542,13 +555,71 @@ async def all_nodes(interaction: discord.Interaction):
 
         await interaction.delete_original_response()
 
+@client.tree.command(name="debug", description="Gives debug info to the user")
+async def debug(interaction: discord.Interaction):
+    # Check channel_id
+    if interaction.channel_id != client.dis_channel_id:
+        # post rejection
+        logging.info(f'Rejected /debug Command - Sent on wrong discord channel')
+        embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    else:
+        # do this command differently, just do all the logic here instead of using a queue
+        logging.info(f'/debug received, printing debug info')
+
+        # calculate last heard
+        lastheard = client.myNodeInfo.get('lastHeard')
+        if lastheard: # ignore if doesn't have lastHeard property
+            ts = int(lastheard)
+            # if ts > time.time() - (time_limit * 60): # Only include if its less then time_limit
+            timezone = pytz.timezone(time_zone)
+            local_time = datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(timezone)
+            timestr = local_time.strftime('%d %B %Y %I:%M:%S %p')
+        else:
+            timestr = '???'
+
+        debug_text = f"```lastHeard: {timestr}\n"
+        for thing in ['user', 'deviceMetrics','localStats']:
+            debug_text += f'{thing} items:\n'
+            for key, value in client.myNodeInfo.get(thing,{}).items():
+                debug_text += f"  {key}: {value}\n"
+        debug_text += '```'
+
+        embed = discord.Embed(title='Debug Information', description=debug_text)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        # Dump nodes info to json file in log dir
+        my_node_dump = os.path.join(log_dir, 'my_node_dump.json')
+        try:
+            default = lambda o: f'<<not serializable data: {type(o).__qualname__}>>'
+            with open(my_node_dump, 'w', encoding='utf-8', errors='ignore') as f:
+                json.dump(client.myNodeInfo, f, indent=4, default=default)
+            logging.info(f'Wrote my node info to {my_node_dump}')
+        except Exception as e:
+            logging.info(f'Error trying to dump my node info. \nError: {e}\n')
+
+        # Dump nodes info to json file in log dir
+        nodes_dump = os.path.join(log_dir, 'nodes_dump.json')
+        try:
+            default = lambda o: f'<<not serializable data: {type(o).__qualname__}>>'
+            with open(nodes_dump, 'w', encoding='utf-8', errors='ignore') as f:
+                json.dump(client.nodes, f, indent=4, default=default)
+            logging.info(f'Wrote nodes info to {nodes_dump}')
+        except Exception as e:
+            logging.info(f'Error trying to dump all nodes. \nError: {e}\n')
+
+        await asyncio.sleep(1)
+
 def run_discord_bot():
     try:
+        # TODO could do ble connection BEFORE doing .run
+        # could also add logic into __init__
         client.run(token)
     except Exception as e:
         logging.error(f"An error occurred while running the bot: {e}")
     finally:
         if client:
+            asyncio.run(client.iface.close())
             asyncio.run(client.close())
 
 if __name__ == "__main__":
