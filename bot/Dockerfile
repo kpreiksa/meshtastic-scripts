@@ -18,7 +18,7 @@ WORKDIR /app
 
 # Copy your application files into the container
 COPY main.py /app/main.py
-COPY config.json /app/config.json
+# COPY config.json /app/config.json
 COPY requirements.txt /app/requirements.txt
 
 # Install any dependencies (if applicable)

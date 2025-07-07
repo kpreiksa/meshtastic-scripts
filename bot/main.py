@@ -20,9 +20,7 @@ from pubsub import pub
 
 # env var params - ie from docker
 IS_DOCKER = os.environ.get('IS_DOCKER')
-
 # other params?
-
 log_file = 'meshtastic-discord-bot.log'
 if IS_DOCKER:
     log_dir = 'config'
@@ -39,27 +37,104 @@ logging.basicConfig(
 )
 
 def load_config():
-    # TODO change this to look for config.json and if its not there, use env vars
-    try:
-        with open("config.json", "r") as config_file:
-            config = json.load(config_file)
-            config["channel_names"] = {int(k): v for k, v in config["channel_names"].items()}
-            return config
-    except FileNotFoundError:
-        logging.critical("The config.json file was not found.")
-        raise
-    except json.JSONDecodeError:
-        logging.critical("config.json is not a valid JSON file.")
-        raise
-    except Exception as e:
-        logging.critical(f"An unexpected error occurred while loading config.json: {e}")
-        raise
+    config = {}
+    if os.path.exists("config.json"):
+        try:
+            logging.info(f'Found config.json, attempting to load configuration.')
+            with open("config.json", "r") as config_file:
+                config = json.load(config_file)
+                config["channel_names"] = {int(k): v for k, v in config["channel_names"].items()}
+                return config
+        except json.JSONDecodeError:
+            logging.critical("config.json is not a valid JSON file.")
+            raise
+        except Exception as e:
+            logging.critical(f"An unexpected error occurred while loading config.json: {e}")
+            raise
+    else:
+        # Assume they are env vars
+        logging.info(f'Unable to find config.json, looking at env vars for configuration')
+        return load_env_vars()
+
+def load_env_vars():
+    """Gets env variables and creates a config dict instead of using a json file input"""
+    # variables:
+    DISCORD_BOT_TOKEN = os.environ.get('DISCORD_BOT_TOKEN')
+    DISCORD_CHANNEL_ID = os.environ.get('DISCORD_CHANNEL_ID')
+    TIME_ZONE = os.environ.get('TIME_ZONE')
+    # Channels
+    CHANNEL_0 = os.environ.get('CHANNEL_0', 'Primary') # required
+    CHANNEL_1 = os.environ.get('CHANNEL_1')
+    CHANNEL_2 = os.environ.get('CHANNEL_2')
+    CHANNEL_3 = os.environ.get('CHANNEL_3')
+    CHANNEL_4 = os.environ.get('CHANNEL_4')
+    CHANNEL_5 = os.environ.get('CHANNEL_5')
+    CHANNEL_6 = os.environ.get('CHANNEL_6')
+    CHANNEL_7 = os.environ.get('CHANNEL_7')
+    CHANNEL_8 = os.environ.get('CHANNEL_8')
+    CHANNEL_9 = os.environ.get('CHANNEL_9')
+    # interface info
+    INTERFACE_METHOD = os.environ.get('INTERFACE_METHOD', 'serial')
+    INTERFACE_ADDRESS = os.environ.get('INTERFACE_ADDRESS')
+    INTERACE_PORT = os.environ.get('INTERACE_PORT', '4403')
+    INTERACE_BLE_NODE = os.environ.get('INTERACE_BLE_NODE')
+
+    required_vars = {
+        'DISCORD_BOT_TOKEN': DISCORD_BOT_TOKEN,
+        'DISCORD_CHANNEL_ID': DISCORD_CHANNEL_ID,
+        'TIME_ZONE': TIME_ZONE,
+    }
+    missing_env_vars = []
+    for var,value in required_vars.items():
+        if value is None:
+            missing_env_vars.append(var)
+    if missing_env_vars:
+        raise EnvironmentError(f'Missing required env vars: {missing_env_vars}')
+
+    config = {
+        'discord_bot_token': DISCORD_BOT_TOKEN,
+        'discord_channel_id': DISCORD_CHANNEL_ID,
+        'time_zone': TIME_ZONE,
+        'is_docker': IS_DOCKER,
+        'channel_names':
+        {
+            0: CHANNEL_0
+        },
+        'interface_info':
+        {
+            'method': INTERFACE_METHOD,
+            'address': INTERFACE_ADDRESS,
+            'port': INTERACE_PORT,
+            'ble_node': INTERACE_BLE_NODE
+        }
+    }
+    if CHANNEL_1 is not None:
+        config['channel_names'][1] = CHANNEL_1
+    if CHANNEL_2 is not None:
+        config['channel_names'][2] = CHANNEL_2
+    if CHANNEL_3 is not None:
+        config['channel_names'][3] = CHANNEL_3
+    if CHANNEL_4 is not None:
+        config['channel_names'][4] = CHANNEL_4
+    if CHANNEL_5 is not None:
+        config['channel_names'][5] = CHANNEL_5
+    if CHANNEL_6 is not None:
+        config['channel_names'][6] = CHANNEL_6
+    if CHANNEL_7 is not None:
+        config['channel_names'][7] = CHANNEL_7
+    if CHANNEL_8 is not None:
+        config['channel_names'][8] = CHANNEL_8
+    if CHANNEL_9 is not None:
+        config['channel_names'][9] = CHANNEL_9
+
+    return config
 
 config = load_config()
 
 color = 0x67ea94  # Meshtastic Green
-red_color = 0xed4245
+red_color = 0xed4245  # Red
 
+# Config Vars
 token = config["discord_bot_token"]
 dis_channel_id = int(config["discord_channel_id"])
 mesh_channel_names = config["channel_names"]
@@ -67,18 +142,25 @@ time_zone = config["time_zone"]
 interface_info = config.get("interface_info", {})
 interface_type = interface_info.get("method", "serial")
 
+battery_warning = 15
+
+# Queues to sync up meshtastic and discord
 meshtodiscord = queue.Queue(maxsize=20) # queue for sending info to discord (when message received on mesh, process then throw in this queue for discord)
 discordtomesh = queue.Queue(maxsize=20) # queue for all send-message types (sendid, sendnum or to a specific channel)
 nodelistq = queue.Queue(maxsize=20) # queue for /active command
 
-battery_warning = 15
-
 def onConnectionMesh(interface, topic=pub.AUTO_TOPIC):
     logging.info(interface.myInfo)
 
+# TODO consider wrapping these into the mesh object
 def get_long_name(node_id, nodes):
     if node_id in nodes:
         return nodes[node_id]['user'].get('longName', 'Unknown')
+    return 'Unknown'
+
+def get_short_name(node_id, nodes):
+    if node_id in nodes:
+        return nodes[node_id]['user'].get('shortName', 'Unknown')
     return 'Unknown'
 
 def onReceiveMesh(packet, interface):  # Called when a packet arrives from mesh.
@@ -104,6 +186,7 @@ def onReceiveMesh(packet, interface):  # Called when a packet arrives from mesh.
 
             nodes = interface.nodes
             from_long_name = get_long_name(packet['fromId'], nodes)
+            from_short_name = get_short_name(packet['fromId'], nodes)
             to_long_name = get_long_name(packet['toId'], nodes) if packet['toId'] != '^all' else 'All Nodes'
             snr = packet.get('rxSnr', '?')
             rssi = packet.get('rxRssi', '?')
@@ -118,7 +201,7 @@ def onReceiveMesh(packet, interface):  # Called when a packet arrives from mesh.
             logging.info(f'From: {from_long_name}')
 
             embed = discord.Embed(title="Message Received", description=packet['decoded']['text'], color=0x67ea94)
-            embed.add_field(name="From Node", value=f"{from_long_name} ({packet['fromId']})", inline=True)
+            embed.add_field(name="From Node", value=f"{packet['fromId']} | {from_short_name} | {from_long_name}", inline=False)
             embed.add_field(name="RxSNR / RxRSSI", value=f"{snr}dB / {rssi}dB", inline=True)
             embed.add_field(name="Hops", value=f"{hops} / {hop_start}", inline=True)
             embed.set_footer(text=f"{current_time}")

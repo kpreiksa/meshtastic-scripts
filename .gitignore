@@ -177,3 +177,5 @@ bot/config.json
 temp*json
 *tar
 mynotes*
+my_node_dump.json
+nodes_dump.json
