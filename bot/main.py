@@ -15,6 +15,10 @@ import meshtastic.serial_interface
 import meshtastic.tcp_interface
 import pytz
 from pubsub import pub
+import functools
+from pprint import pprint
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, Double
+from sqlalchemy.orm import sessionmaker, declarative_base
 
 # TODO add try/except for Bleaker dbus error and for ble disconnection (heartbeat error?)
 
@@ -44,6 +48,49 @@ def get_current_time_str():
     return datetime.now().strftime('%d %B %Y %I:%M:%S %p')
 
 
+Base = declarative_base()
+
+# 3. Define the DBPacket 
+class DBPacket(Base):
+    __tablename__ = 'packets'  # Name of the table in the database
+    id = Column(Integer, primary_key=True)
+    channel = Column(Integer)
+    from_id = Column(String)
+    to_id = Column(String)
+    from_shortname = Column(String)
+    to_shortname = Column(String)
+    from_longname = Column(String)
+    to_longname = Column(String)
+    hop_limit = Column(Integer)
+    hop_start = Column(Integer)
+    pki_encrypted = Column(Boolean)
+    portnum = Column(String)
+    priority = Column(String)
+    rxTime = Column(Integer) # epoch
+    rx_rssi = Column(Double)
+    rx_snr = Column(Double)
+    to_all = Column(Boolean)
+    want_ack = Column(Boolean)
+    
+    # text message
+    text = Column(String)
+    
+    # telemetry/device metrics
+    air_util_tx = Column(Double)
+    battery_level = Column(Double)
+    channel_utilization = Column(Double)
+    uptime_seconds = Column(Double)
+    voltage = Column(Double)
+    
+    # position
+    altitude = Column(Double)
+    latitude = Column(Double)
+    latitudeI = Column(Integer)
+    longitude = Column(Double)
+    longitudeI = Column(Integer)
+
+
+
 battery_warning = 15
 nodelistq = queue.Queue(maxsize=20) # queue for /active command
 
@@ -55,14 +102,14 @@ class Config():
             
         @property
         def interface_type(self):
-            self._d.get('method', 'serial')
+            return self._d.get('method', 'serial')
             
         @property
         def interface_address(self):
             if self.interface_type == 'tcp':
                 return self._d.get('address')
             else:
-                print(f'WARNING: interface_address is invalid for interface_type: {self.interface_type}')
+                logging.debug(f'interface_address is invalid for interface_type: {self.interface_type}')
                 return None
             
         @property
@@ -70,7 +117,7 @@ class Config():
             if self.interface_type == 'tcp':
                 return self._d.get('port')
             else:
-                print(f'WARNING: interface_port is invalid for interface_type: {self.interface_type}')
+                logging.debug(f'interface_port is invalid for interface_type: {self.interface_type}')
                 return None
             
         @property
@@ -78,7 +125,7 @@ class Config():
             if self.interface_type == 'ble':
                 return self._d.get('ble_node')
             else:
-                print(f'WARNING: interface_ble_node is invalid for interface_type: {self.interface_type}')
+                logging.debug(f'interface_ble_node is invalid for interface_type: {self.interface_type}')
                 return None     
     
     def __init__(self):
@@ -86,10 +133,11 @@ class Config():
     
     def load_config(self):
         config = {}
-        if os.path.exists("config.json"):
+        config_filepath = os.path.join(os.path.dirname(__file__), 'config.json')
+        if os.path.exists(config_filepath):
             try:
                 logging.info(f'Found config.json, attempting to load configuration.')
-                with open("config.json", "r") as config_file:
+                with open(config_filepath, "r") as config_file:
                     config = json.load(config_file)
                     config["channel_names"] = {int(k): v for k, v in config["channel_names"].items()}
                     return config
@@ -205,14 +253,89 @@ class Config():
 class NodeDBObj(): # sqlalchemy obj
     pass
 
-    
-class NodeObj():
-    def __init__(self, node_dict):
-        self._node_dict = node_dict
+class NodeUserInfo():
+    def __init__(self, user_dict):
+        self._user_dict = user_dict
+        
+    def __repr__(self):
+        return f'<Class {self.__class__.__name__}>.'
         
     @property
-    def node_id(self):
-        pass
+    def user_id(self):
+        return self._user_dict.get('id')
+    
+    @property
+    def short_name(self):
+        return self._user_dict.get('shortName')
+    
+    @property
+    def long_name(self):
+        return self._user_dict.get('longName')
+    
+    @property
+    def mac_address(self):
+        return self._user_dict.get('macaddr')
+    
+    @property
+    def hw_model(self):
+        return self._user_dict.get('hwModel')
+    
+class NodePositionInfo():
+    def __init__(self, position_dict):
+        self._position_dict = position_dict
+        
+    def __repr__(self):
+        return f'<Class {self.__class__.__name__}>.'
+        
+    @property
+    def latitude(self):
+        return self._position_dict.get('latitude')
+    
+    @property
+    def longitude(self):
+        return self._position_dict.get('longitude')
+    
+class NodeDeviceMetrics():
+    def __init__(self, device_metrics_dict):
+        self._device_metrics_dict = device_metrics_dict
+        
+    def __repr__(self):
+        return f'<Class {self.__class__.__name__}>.'
+        
+    @property
+    def battery_level(self):
+        return self._device_metrics_dict.get('batteryLevel')
+    
+    @property
+    def voltage(self):
+        return self._device_metrics_dict.get('voltage')
+    
+class MeshNode():
+    def __init__(self, node_dict):
+        self._node_dict = node_dict
+    
+    def __repr__(self):
+        return f'<Class {self.__class__.__name__}>.'
+        
+    @property
+    def user_info(self):
+        return NodeUserInfo(self._node_dict.get('user', {}))
+    
+    @property
+    def position_info(self):
+        return NodePositionInfo(self._node_dict.get('position', {}))
+    
+    @property
+    def device_metricsw(self):
+        return NodeDeviceMetrics(self._node_dict.get('deviceMetrics', {}))
+        
+    @property
+    def node_num(self):
+        return self._node_dict.get('num')
+    
+    @property
+    def last_heard(self):
+        return self._node_dict.get('lastHeard')
     
     # nodenum
     
@@ -224,11 +347,521 @@ class NodeObj():
         # write it to db if it doesn't exist... if it does, update it
         # based on criteria... i.e. newest wins
         pass
+ 
+class DeviceMetrics():
+    def __init__(self, d):
+        self._d = d 
+        
+    def __repr__(self):
+        return f'<Class {self.__class__.__name__}>.'
     
+    def packet_summary_json(self):
+        out = {
+            'Battery Level': self.battery_level,
+            'Voltage': self.voltage,
+            'Channel Utilization': self.channel_utilization,
+            'Air Utilization': self.air_util_tx,
+            'Uptime Seconds': self.uptime_seconds,
+        }
+        return out
+        
+    @property
+    def battery_level(self):
+        return self._d.get('batteryLevel')
+    
+    @property
+    def voltage(self):
+        return self._d.get('voltage')
+    
+    @property
+    def channel_utilization(self):
+        return self._d.get('channelUtilization')
+    
+    @property
+    def air_util_tx(self):
+        return self._d.get('airUtilTx')
+    
+    @property
+    def uptime_seconds(self):
+        return self._d.get('uptimeSeconds')
+    
+
+class TelemetryPacket():
+    def __init__(self, d):
+        self._d = d
+        
+    def __repr__(self):
+        return f'<Class {self.__class__.__name__}>.'
+    
+    def packet_summary_json(self):
+        out = {
+            'Time': self.time,
+            'Device Metrics': self.device_metrics.packet_summary_json()
+        }
+        return out
+        
+    @property
+    def time(self):
+        return self._d.get('time')
+    
+    @property
+    def device_metrics(self):
+        return DeviceMetrics(self._d.get('deviceMetrics', {}))
+ 
+ 
+class PositionPacket():
+    def __init__(self, d):
+        self._d = d
+        
+    def __repr__(self):
+        return f'<Class {self.__class__.__name__}>.'
+    
+    def packet_summary_json(self):
+        out = {
+            'Time': self.time,
+            'Latitude I': self.latitudeI,
+            'Longitude I': self.longitudeI,
+            'Latitude': self.latitude,
+            'Longitude': self.longitude,
+            'Altitude': self.altitude,
+        }
+        return out
+        
+    @property
+    def time(self):
+        return self._d.get('time')
+    
+    @property
+    def latitudeI(self):
+        return self._d.get('latitudeI')
+    
+    @property
+    def longitudeI(self):
+        return self._d.get('longitudeI')
+    
+    @property
+    def altitude(self):
+        return self._d.get('altitude')
+    
+    @property
+    def latitude(self):
+        return self._d.get('latitude')
+    
+    @property
+    def longitude(self):
+        return self._d.get('longitude')
+
+
+class TraceroutePacket():
+    def __init__(self, d):
+        self._d = d
+        
+    def __repr__(self):
+        return f'<Class {self.__class__.__name__}>.'
+    
+    def packet_summary_json(self):
+        out = {
+            'SNR Towards': self.snr_towards,
+        }
+        return out
+        
+    @property
+    def snr_towards(self):
+        return self._d.get('snrTowards', [])
+
+class NodeInfoPacket():
+    def __init__(self, d):
+        self._d = d
+        
+    def __repr__(self):
+        return f'<Class {self.__class__.__name__}>.'
+    
+    def packet_summary_json(self):
+        out = {
+            'Node ID': self.node_id,
+            'Node Long Name': self.node_long_name,
+            'Node Short Name': self.node_short_name,
+            'MAC Address': self.mac_addr,
+            'HW Model': self.hw_model,
+            'Public Key': self.public_key,
+        }
+        return out
+        
+    @property
+    def node_id(self):
+        return self._d.get('id')
+    
+    @property
+    def node_long_name(self):
+        return self._d.get('longName')
+    
+    @property
+    def node_short_name(self):
+        return self._d.get('shortName')
+    
+    @property
+    def mac_addr(self):
+        return self._d.get('macaddr')
+    
+    @property
+    def hw_model(self):
+        return self._d.get('hwModel')
+    
+    @property
+    def public_key(self):
+        return self._d.get('publicKey')    
+       
+class DecodedPacket():
+    def __init__(self, d):
+        self._d = d
+        
+    def __repr__(self):
+        return f'<Class {self.__class__.__name__}>. PortNum= {self.portnum}'
+        
+    def packet_summary_json(self):
+        out = {
+            'PortNum': self.portnum,
+            'Channel': self.channel,
+            'WantResponse': self.want_response,
+            'Telemetry': self.telemetry.packet_summary_json() if self.telemetry else None,
+            'Position': self.position.packet_summary_json() if self.position else None,
+            'Text': self.text if self.text else None,
+            'Traceroute': self.traceroute.packet_summary_json() if self.traceroute else None,
+            'User': self.user.packet_summary_json() if self.user else None,
+            'Keys': list(self._d.keys())
+        }
+        return out
+        
+    @property
+    def portnum(self):
+        return self._d.get('portnum')
+    
+    @property
+    def channel(self):
+        return self._d.get('channel')
+    
+    @property
+    def want_response(self):
+        return self._d.get('want_response')
+    
+    @property
+    def telemetry(self):
+        if self.portnum == 'TELEMETRY_APP':
+            return TelemetryPacket(self._d.get('telemetry', {}))
+        else: return None
+        
+    @property
+    def position(self):
+        if self.portnum == 'POSITION_APP':
+            return PositionPacket(self._d.get('position', {}))
+        else: return None
+        
+    @property
+    def user(self):
+        if self.portnum == 'NODEINFO_APP':
+            return NodeInfoPacket(self._d.get('user', {}))
+        else: return None
+        
+    @property
+    def traceroute(self):
+        if self.portnum == 'TRACEROUTE':
+            return TraceroutePacket(self._d.get('traceroute', {}))
+        else: return None
+    
+    @property
+    def text(self):
+        if self.portnum == 'TEXT_MESSAGE_APP':
+            return self._d.get('text')
+        else:
+            return None
+
+class MeshPacket():
+    def __init__(self, d, mesh_client):
+        self._d = d
+        self._mesh_client = mesh_client
+        
+    def __repr__(self):
+        return f'<Class {self.__class__.__name__}>. PortNum: {self.portnum} From: {self.from_descriptive} To: {self.to_descriptive}'
+        
+    def packet_summary_json(self):
+        out = {
+            'Channel': self.channel,
+            'From': f'{self.from_num} | {self.from_descriptive}',
+            'To': f'{self.to_num} | {self.to_descriptive}',
+            'Priority': self.priority,
+            'Decoded': self.decoded.packet_summary_json()
+        }
+        return out
+    
+    def to_db(self):
+        if self.portnum == 'TEXT_MESSAGE_APP':
+            new_packet = DBPacket(
+                channel = self.channel,
+                from_id = self.from_id,
+                from_shortname = self.from_shortname,
+                from_longname = self.from_longname,
+                to_id = self.to_id,
+                to_shortname = self.to_shortname,
+                to_longname = self.to_longname,
+                hop_limit = self.hop_limit,
+                hop_start = self.hop_start,
+                pki_encrypted = self.pki_encrypted,
+                portnum = self.portnum,
+                priority = self.priority,
+                rxTime = self.rxTime,
+                rx_rssi = self.rx_rssi,
+                rx_snr = self.rx_snr,
+                to_all = self.to_all,
+                want_ack = self.want_ack,
+                text = self.decoded.text
+            )
+            self._mesh_client._db_session.add(new_packet)
+            self._mesh_client._db_session.commit()
+        else:
+            new_packet = DBPacket(
+                channel = self.channel,
+                from_id = self.from_id,
+                from_shortname = self.from_shortname,
+                from_longname = self.from_longname,
+                to_id = self.to_id,
+                to_shortname = self.to_shortname,
+                to_longname = self.to_longname,
+                hop_limit = self.hop_limit,
+                hop_start = self.hop_start,
+                pki_encrypted = self.pki_encrypted,
+                portnum = self.portnum,
+                priority = self.priority,
+                rxTime = self.rxTime,
+                rx_rssi = self.rx_rssi,
+                rx_snr = self.rx_snr,
+                to_all = self.to_all,
+                want_ack = self.want_ack
+            )
+            self._mesh_client._db_session.add(new_packet)
+            self._mesh_client._db_session.commit()
+            
+        
+    @property
+    def from_num(self):
+        return self._d.get('from')
+    
+    @property
+    def to_num(self):
+        return self._d.get('to')
+    
+    @property
+    def packet_id(self):
+        return self._d.get('id')
+    
+    @property
+    def rxTime(self):
+        return self._d.get('rxTime')
+    
+    @property
+    def hopLimit(self):
+        return self._d.get('hopLimit')
+    
+    @property
+    def priority(self):
+        return self._d.get('priority')
+    
+    @property
+    def from_id(self):
+        return self._d.get('fromId')
+    
+    @property
+    def to_id(self):
+        return self._d.get('toId')
+    
+    @property
+    def rx_snr(self):
+        return self._d.get('rxSnr')
+    
+    @property
+    def rx_rssi(self):
+        return self._d.get('rxRssi')
+    
+    @property
+    def hop_limit(self):
+        return self._d.get('hopLimit')
+    
+    @property
+    def hop_start(self):
+        return self._d.get('hopStart')
+    
+    @property
+    def decoded(self):
+        return DecodedPacket(self._d.get('decoded', {}))
+    
+    @property
+    def want_ack(self):
+        return self._d.get('wantAck')
+    
+    @property
+    def public_key(self):
+        return self._d.get('publicKey')
+    
+    @property
+    def pki_encrypted(self):
+        return self._d.get('pkiEncrypted')
+    
+    @property
+    def from_descriptive(self):
+        return f'{self.from_id} | {self.from_shortname} | {self.from_shortname}'
+    
+    @property
+    def to_descriptive(self):
+        if self.to_all:
+            return 'All Nodes'
+        else:
+            return f'{self.to_id} | {self.to_shortname} | {self.to_longname}'
+    
+    @property
+    def rx_snr_str(self):
+        if self.rx_snr:
+            return f'{self.rx_snr} dB'
+        else:
+            return '?'
+    
+    @property
+    def rx_rssi_str(self):
+        if self.rx_rssi:
+            return f'{self.rx_rssi} dB'
+        else:
+            return '?'
+    
+    @property
+    def channel(self):
+        return self._d.get('channel')
+    
+    @property
+    def channel_str(self):
+        out = 0
+        top_channel = self._d.get('channel')
+        if top_channel is not None:
+            out = top_channel
+        else:
+            decoded_channel = self.decoded.channel
+            if decoded_channel is not None:
+                out = decoded_channel
+        return out
+    
+    @property
+    def portnum(self):
+        return self.decoded.portnum
+    
+    @property
+    def is_text_message(self):
+        return self.portnum == 'TEXT_MESSAGE_APP'
+    
+    @property
+    def to_all(self):
+        return self.to_id == '^all'
+    
+    @property
+    def from_shortname(self):
+        return self._mesh_client.get_short_name(self.from_id)
+        
+    @property
+    def to_shortname(self):
+        if self.to_all:
+            return 'All Nodes'
+        else:
+            return self._mesh_client.get_short_name(self.to_id)
+    
+    @property
+    def from_longname(self):
+        return self._mesh_client.get_long_name(self.from_id, '?')
+    
+    @property
+    def to_longname(self):
+        if self.to_all:
+            return 'All Nodes'
+        else:
+            return self._mesh_client.get_long_name(self.to_id, '?')
+    
+
 class MeshClient():
-    def __init__(self):
+    
+    def onReceiveMesh(self, packet, interface):  # Called when a packet arrives from mesh.
+        
+        try:
+            packetObj = MeshPacket(packet, self)
+            packetObj.to_db()
+            pprint(packetObj.packet_summary_json())
+            if packetObj.is_text_message:
+                # new_user1 = User(name='Alice', email='alice@example.com')
+                # new_user2 = User(name='Bob', email='bob@example.com')
+
+                # session.add(new_user1)
+                # session.add(new_user2)
+                # session.commit()  # Commit changes to save to the database
+                logging.info("Text message packet received") # For debugging.
+                # logging.info(f"Packet: {packet}") # Print the entire packet for debugging.
+                
+                mesh_channel_index = packetObj.channel
+                mesh_channel_name = self.config.channel_names.get(mesh_channel_index, f"Unknown Channel ({mesh_channel_index})")
+
+                current_time = get_current_time_str()
+                
+                hop_start = packetObj.hop_start
+
+                if packetObj.hop_limit and packetObj.hop_start:
+                    hops = int(packetObj.hop_limit) - int(packetObj.hop_limit)
+                else:
+                    hops = "?"
+                    if not packetObj.hop_limit:
+                        hop_start = "?"
+                
+                logging.info(f'From: {packetObj.from_descriptive}')
+
+                embed = discord.Embed(title="Message Received", description=packetObj.decoded.text, color=green_color)
+                embed.add_field(name="From Node", value=packetObj.from_descriptive, inline=False)
+                embed.add_field(name="RxSNR / RxRSSI", value=f"{packetObj.rx_snr_str} / {packetObj.rx_rssi_str}", inline=True)
+                embed.add_field(name="Hops", value=f"{hops} / {hop_start}", inline=True)
+                embed.set_footer(text=f"{current_time}")
+
+                if packetObj.to_all:
+                    embed.add_field(name="To Channel", value=mesh_channel_name, inline=True)
+                else:
+                    embed.add_field(name="To Node", value=packetObj.to_descriptive, inline=True)
+
+                logging.info(f'Putting Mesh Received message on Discord queue')
+                if self.discord_client:
+                    self.discord_client.enqueue_msg(embed)
+            else:
+                logging.info(f'Received unhandled packet type: {packetObj.portnum}')
+
+        except Exception as e:
+            logging.error(f'Error parsing packet: {str(e)}')
+    
+    def onConnectionMesh(self, interface, topic=None):
+        # interface, obj
+        
+        
+        node_info = interface.getMyNodeInfo()
+        node_obj = MeshNode(node_info)
+        
+        logging.info('***CONNECTED***')
+        logging.info('***************')
+        logging.info(f'Node Num:   {node_obj.node_num}')
+        logging.info(f'Node ID:    {node_obj.user_info.user_id}')
+        logging.info(f'Short Name: {node_obj.user_info.short_name}')
+        logging.info(f'Long Name:  {node_obj.user_info.long_name}')
+        logging.info(f'MAC Addr:   {node_obj.user_info.mac_address}')
+        logging.info(f'HW Model:   {node_obj.user_info.hw_model}')
+        logging.info('***************')
+        
+    def onNodeUpdated(self, node, interface):
+        # this happens when a node gets updated... we should update the database
+        logging.info(str(type(node)))
+        logging.info(str(dir(node)))
+            
+    def __init__(self, db_session):
         self._meshqueue = queue.Queue(maxsize=20)
         self._adminqueue = queue.Queue(maxsize=20)
+        
+        self._db_session = db_session
         
         self.config = Config()
         
@@ -241,13 +874,16 @@ class MeshClient():
         
         self.discord_client = None
         
-        onReceiveMesh = lambda x, y: self.onConnectionMesh(x, y)
-        onConnectionMesh = lambda x, y: self.onConnectionMesh(x, y)
-        onNodeUpdated = lambda x: self.onNodeUpdated(x)
+        # onConnectionMeshObj = functools.partial(onConnectionMesh, obj=self)
         
-        pub.subscribe(onReceiveMesh, "meshtastic.receive")
-        pub.subscribe(onConnectionMesh, "meshtastic.connection.established")
-        pub.subscribe(onNodeUpdated, "meshtastic.node.updated")
+        # onReceiveMesh = lambda x, y: self.onConnectionMesh(x, y)
+        # onConnectionMeshL = lambda interface, topic=pub.AUTO_TOPIC: onConnectionMesh(self, interface, topic)
+        # onNodeUpdated = lambda x: self.onNodeUpdated(x)
+        
+        
+        pub.subscribe(self.onReceiveMesh, "meshtastic.receive")
+        pub.subscribe(self.onConnectionMesh, "meshtastic.connection.established")
+        pub.subscribe(self.onNodeUpdated, "meshtastic.node.updated")
         
     def connect(self):
         interface_info = self.config.interface_info
@@ -278,25 +914,26 @@ class MeshClient():
                 sys.exit(1)
         else:
             logging.info(f'Unsupported interface: {interface_info.interface_type}')
+            return
             
         myinfo = self.iface.getMyUser()
         shortname = myinfo.get('shortName','???')
         longname = myinfo.get('longName','???')
-        nodes = self.iface.nodes # this should take precedence
+        self.nodes = self.iface.nodes # this should take precedence
         logging.info(f'Bot connected to Mesh node: {shortname} | {longname} with connection {interface_info.interface_type}')
         
     def link_discord(self, discord_client):
         self.discord_client = discord_client
         
-    def get_long_name(self, node_id):
+    def get_long_name(self, node_id, default = '?'):
         if node_id in self.nodes:
-            return self.nodes[node_id]['user'].get('longName', 'Unknown')
-        return 'Unknown'
+            return self.nodes[node_id]['user'].get('longName', default)
+        return default
 
-    def get_short_name(self, node_id):
+    def get_short_name(self, node_id, default = '?'):
         if node_id in self.nodes:
-            return self.nodes[node_id]['user'].get('shortName', 'Unknown')
-        return 'Unknown'
+            return self.nodes[node_id]['user'].get('shortName', default)
+        return default
     
     def get_node_info_from_id(self, node_id):
         if not node_id.startswith('!'):
@@ -536,82 +1173,27 @@ class MeshClient():
     def background_process(self):
         
         # don't do this stuff every time...
-        self.nodes = self.iface.nodes
-        self.myNodeInfo = self.iface.getMyNodeInfo()
+        # self.nodes = self.iface.nodes
+        # self.myNodeInfo = self.iface.getMyNodeInfo()
         
         # do this stuff every time
-        meshmessage = self._meshqueue.get_nowait()
-        self.process_queue_message(meshmessage)
-        self._meshqueue.task_done()
-        
-        adminmessage = self._adminqueue.get_nowait()
-        self.process_admin_queue_message(adminmessage)
-        self._meshqueue.task_done()
-        
-    def onConnectionMesh(self, interface, topic=pub.AUTO_TOPIC):
-        logging.info(interface.myInfo)
-        
-    def onNodeUpdated(self, node):
-        # this happens when a node gets updated... we should update the database
-        logging.info(str(type(node)))
-        logging.info(str(dir(node)))
-        
-    def onReceiveMesh(self, packet, interface):  # Called when a packet arrives from mesh.
         try:
-            if packet['decoded']['portnum'] == 'TEXT_MESSAGE_APP':
-                logging.info("Text message packet received") # For debugging.
-                logging.info(f"Packet: {packet}") # Print the entire packet for debugging.
-
-                # Check if 'channel' is present in the top-level packet.
-                if 'channel' in packet:
-                    mesh_channel_index = packet['channel']
-                else:
-                    # Check if 'channel' is present in the decoded packet.
-                    if 'channel' in packet['decoded']:
-                        mesh_channel_index = packet['decoded']['channel']
-                    else:
-                        mesh_channel_index = 0  # Default to channel 0 if not present.
-                        logging.info("Channel not found in packet, defaulting to channel 0") # For debugging.
-
-                mesh_channel_name = self.config.channel_names.get(mesh_channel_index, f"Unknown Channel ({mesh_channel_index})")
-
-                current_time = get_current_time_str()
-
-                from_long_name = self.get_long_name(packet['fromId'])
-                from_short_name = self.get_short_name(packet['fromId'])
-                to_long_name = self.get_long_name(packet['toId']) if packet['toId'] != '^all' else 'All Nodes'
-                snr = packet.get('rxSnr', '?')
-                rssi = packet.get('rxRssi', '?')
-                hop_limit = packet.get('hopLimit') # remaining hops?
-                hop_start = packet.get('hopStart') # starting number of hops?
-                if hop_limit and hop_start:
-                    hops = int(hop_start) - int(hop_limit)
-                else:
-                    hops = "?"
-                    if not hop_start:
-                        hop_start = "?"
-                logging.info(f'From: {from_long_name}')
-
-                embed = discord.Embed(title="Message Received", description=packet['decoded']['text'], color=green_color)
-                embed.add_field(name="From Node", value=f"{packet['fromId']} | {from_short_name} | {from_long_name}", inline=False)
-                embed.add_field(name="RxSNR / RxRSSI", value=f"{snr}dB / {rssi}dB", inline=True)
-                embed.add_field(name="Hops", value=f"{hops} / {hop_start}", inline=True)
-                embed.set_footer(text=f"{current_time}")
-
-                if packet['toId'] == '^all':
-                    embed.add_field(name="To Channel", value=mesh_channel_name, inline=True)
-                else:
-                    embed.add_field(name="To Node", value=f"{to_long_name} ({packet['toId']})", inline=True)
-
-                logging.info(f'Putting Mesh Received message on Discord queue')
-                if self.discord_client:
-                    self.discord_client.enqueue_msg(embed)
-
-        except KeyError as e:  # Catch empty packet.
+            meshmessage = self._meshqueue.get_nowait()
+            self.process_queue_message(meshmessage)
+            self._meshqueue.task_done()
+        except queue.Empty:
             pass
-        except Exception as e:  # Catch any other exceptions.
-            logging.info(f"Unexpected error: {e}") # For debugging.
+        
+        try:
+            adminmessage = self._adminqueue.get_nowait()
+            self.process_admin_queue_message(adminmessage)
+            self._meshqueue.task_done()
+        except queue.Empty:
             pass
+        
+
+        
+
         
 
 class HelpView(View):
@@ -637,7 +1219,7 @@ class DiscordBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         # TODO maybe move the mesh parts into a separate class or dict to not possibly conflict with discord.Client super class
         self.channel = None
-        self.dis_channel_id = self.config.discord_channel_id
+        self.dis_channel_id = int(self.config.discord_channel_id)
         
 
     async def setup_hook(self) -> None:  # Create the background task and run it in the background.
@@ -670,21 +1252,18 @@ class DiscordBot(discord.Client):
             except queue.Empty:
                 pass
             
-            counter += 1
-            # Approximately 1 minute (every 12th call, call every 5 seconds) to refresh the node list.
-            # save nodelist to self, so its available for pulling active nodes
-            if (counter % 12 == 1):
-                # node stuff?
-                pass
-            
             # process stuff on mesh side
-            await self.mesh_client.background_process()
+            self.mesh_client.background_process()
             
             await asyncio.sleep(5)
 
 
+engine = create_engine('sqlite:///example.db')
+Base.metadata.create_all(engine)
+Session = sessionmaker(bind=engine)
+session = Session()
 config = Config()
-mesh_client = MeshClient()
+mesh_client = MeshClient(db_session=session)
 discord_client = DiscordBot(mesh_client, intents=discord.Intents.default())
 mesh_client.link_discord(discord_client)
 
