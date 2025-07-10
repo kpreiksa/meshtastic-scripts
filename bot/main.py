@@ -88,6 +88,15 @@ class DBPacket(Base):
     latitudeI = Column(Integer)
     longitude = Column(Double)
     longitudeI = Column(Integer)
+    
+    # nodeinfo
+    node_id = Column(String)
+    node_short_name = Column(String)
+    node_long_name = Column(String)
+    mac_address = Column(String)
+    hw_model = Column(String)
+    public_key = Column(String)
+
 
 
 
@@ -617,6 +626,94 @@ class MeshPacket():
             )
             self._mesh_client._db_session.add(new_packet)
             self._mesh_client._db_session.commit()
+        elif self.portnum == 'POSITION_APP':
+            new_packet = DBPacket(
+                channel = self.channel,
+                from_id = self.from_id,
+                from_shortname = self.from_shortname,
+                from_longname = self.from_longname,
+                to_id = self.to_id,
+                to_shortname = self.to_shortname,
+                to_longname = self.to_longname,
+                hop_limit = self.hop_limit,
+                hop_start = self.hop_start,
+                pki_encrypted = self.pki_encrypted,
+                portnum = self.portnum,
+                priority = self.priority,
+                rxTime = self.rxTime,
+                rx_rssi = self.rx_rssi,
+                rx_snr = self.rx_snr,
+                to_all = self.to_all,
+                want_ack = self.want_ack,
+                altitude = self.decoded.position.altitude,
+                latitude = self.decoded.position.latitude,
+                longitude = self.decoded.position.longitude,
+                latitudeI = self.decoded.position.latitudeI,
+                longitudeI = self.decoded.position.longitudeI,
+            )
+            self._mesh_client._db_session.add(new_packet)
+            self._mesh_client._db_session.commit()
+            
+        elif self.portnum == 'TELEMETRY_APP':
+            new_packet = DBPacket(
+                channel = self.channel,
+                from_id = self.from_id,
+                from_shortname = self.from_shortname,
+                from_longname = self.from_longname,
+                to_id = self.to_id,
+                to_shortname = self.to_shortname,
+                to_longname = self.to_longname,
+                hop_limit = self.hop_limit,
+                hop_start = self.hop_start,
+                pki_encrypted = self.pki_encrypted,
+                portnum = self.portnum,
+                priority = self.priority,
+                rxTime = self.rxTime,
+                rx_rssi = self.rx_rssi,
+                rx_snr = self.rx_snr,
+                to_all = self.to_all,
+                want_ack = self.want_ack,
+                air_util_tx = self.decoded.telemetry.device_metrics.air_util_tx,
+                battery_level = self.decoded.telemetry.device_metrics.battery_level,
+                channel_utilization = self.decoded.telemetry.device_metrics.channel_utilization,
+                uptime_seconds = self.decoded.telemetry.device_metrics.uptime_seconds,
+                voltage = self.decoded.telemetry.device_metrics.voltage,
+            )
+            self._mesh_client._db_session.add(new_packet)
+            self._mesh_client._db_session.commit()
+            
+            
+        elif self.portnum == 'NODEINFO_APP':
+            new_packet = DBPacket(
+                channel = self.channel,
+                from_id = self.from_id,
+                from_shortname = self.from_shortname,
+                from_longname = self.from_longname,
+                to_id = self.to_id,
+                to_shortname = self.to_shortname,
+                to_longname = self.to_longname,
+                hop_limit = self.hop_limit,
+                hop_start = self.hop_start,
+                pki_encrypted = self.pki_encrypted,
+                portnum = self.portnum,
+                priority = self.priority,
+                rxTime = self.rxTime,
+                rx_rssi = self.rx_rssi,
+                rx_snr = self.rx_snr,
+                to_all = self.to_all,
+                want_ack = self.want_ack,
+                node_id = self.decoded.user.node_id,
+                node_short_name = self.decoded.user.node_short_name,
+                node_long_name = self.decoded.user.node_long_name,
+                mac_address = self.decoded.user.mac_addr,
+                hw_model = self.decoded.user.hw_model,
+                public_key = self.decoded.user.public_key
+            )
+            self._mesh_client._db_session.add(new_packet)
+            self._mesh_client._db_session.commit()
+            
+            
+
         else:
             new_packet = DBPacket(
                 channel = self.channel,
