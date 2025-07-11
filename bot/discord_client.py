@@ -76,8 +76,7 @@ class DiscordBot(discord.Client):
                 message = await self.channel.fetch_message(msg_id)       
                 
                 e = message.embeds[0]
-                e.add_field(name='Acknowledged By', value=f'{ack_by_id} | {ack_by_shorname} | {ack_by_longname}', inline=False)
-                e.add_field(name='Acknowledged Time', value=ack_time_str, inline=False)
+                e.add_field(name='Acknowledged', value=f'{ack_by_id} | {ack_by_shorname} | {ack_by_longname}\n{ack_time_str}', inline=False)
                 await message.edit(embed=e)
                 
                 self._meshresponsequeue.task_done()

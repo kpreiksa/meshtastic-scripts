@@ -146,7 +146,7 @@ class MeshClient():
                 matching_packet.response_routing_error_reason = routing_error_reason
                 self._db_session.commit() # save back to db
                 db_updated = True
-                self.discord_client.enqueue_msg(f'https://discord.com/channels/{matching_packet.discord_guild_id}/{matching_packet.discord_channel_id}/{matching_packet.discord_message_id} Msg to {matching_packet.dest_id} | {matching_packet.dest_shortname} | {matching_packet.dest_longname} - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
+                # self.discord_client.enqueue_msg(f'https://discord.com/channels/{matching_packet.discord_guild_id}/{matching_packet.discord_channel_id}/{matching_packet.discord_message_id} Msg to {matching_packet.dest_id} | {matching_packet.dest_shortname} | {matching_packet.dest_longname} - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
                 self.discord_client.enqueue_mesh_response(
                     {
                         'discord_guild_id': matching_packet.discord_guild_id,
