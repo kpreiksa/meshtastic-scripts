@@ -80,4 +80,7 @@ class TXPacket(Base):
     response_hop_limit = Column(Integer)
     response_hop_start = Column(Integer)
     response_routing_error_reason = Column(String)
+    discord_guild_id = Column(String)
+    discord_channel_id = Column(String)
+    discord_message_id = Column(String)
     

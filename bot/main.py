@@ -161,7 +161,7 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
     if interaction.channel_id != discord_client.dis_channel_id:
         # post rejection
         logging.info(f'Rejected /send_shortname Command - Sent on wrong discord channel')
-        embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{client.dis_channel_id}>')
+        embed = discord.Embed(title='Wrong Channel', description=f'Commands for this bot are only allowed in <#{discord_client.dis_channel_id}>')
         await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
         logging.info(f'/send_shortname command received. nodeName: {node_name}. Sending message: {message}')
@@ -181,8 +181,12 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
             embed.add_field(name="To Node:", value=f'{node_id} | {shortname} | {longname}', inline=True)
             embed.set_footer(text=f"{current_time}")
             # send message
-            await interaction.response.send_message(embed=embed)
-            mesh_client.enqueue_send_shortname(node_name, message)
+            out = await interaction.response.send_message(embed=embed)
+            discord_message_id = out.message_id
+            channel_id = interaction.channel_id
+            guild_id = interaction.guild_id
+            
+            mesh_client.enqueue_send_shortname(node_name, message, guild_id, channel_id, discord_message_id)
 
         elif isinstance(node, int):
             # if node is an int, there was an error, send an error message

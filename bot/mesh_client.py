@@ -146,7 +146,27 @@ class MeshClient():
                 matching_packet.response_routing_error_reason = routing_error_reason
                 self._db_session.commit() # save back to db
                 db_updated = True
-                self.discord_client.enqueue_msg(f'Msg to {matching_packet.dest_id} | {matching_packet.dest_shortname} | {matching_packet.dest_longname} - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
+                self.discord_client.enqueue_msg(f'https://discord.com/channels/{matching_packet.discord_guild_id}/{matching_packet.discord_channel_id}/{matching_packet.discord_message_id} Msg to {matching_packet.dest_id} | {matching_packet.dest_shortname} | {matching_packet.dest_longname} - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
+                self.discord_client.enqueue_mesh_response(
+                    {
+                        'discord_guild_id': matching_packet.discord_guild_id,
+                        'discord_channel_id': matching_packet.discord_channel_id,
+                        'discord_message_id': matching_packet.discord_message_id,
+                        'response_from': response_from,
+                        'response_from_id': response_from_id,
+                        'response_from_shortname': response_from_shortname,
+                        'response_from_longname': response_from_longname,
+                        'response_rx_time': response_rx_time,
+                        'response_to': response_to,
+                        'response_to_id': response_to_id,
+                        'response_to_shortname': response_to_shortname,
+                        'response_to_longname': response_to_longname,
+                        'response_rx_snr': response_rx_snr,
+                        'response_rx_rssi': response_rx_rssi,
+                        'response_hop_limit': response_hop_limit,
+                        'response_hop_start': response_hop_start,
+                    }
+                )
         else:
             self.discord_client.enqueue_msg(f'Msg to {response_from_id} |   - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
         
@@ -278,12 +298,17 @@ class MeshClient():
             }
         )
         
-    def enqueue_send_shortname(self, shortname, message):
+    def enqueue_send_shortname(self, shortname, message, guild_id, channel_id, discord_message_id):
+        
+        
         self.enqueue_msg(
             {
                 'msg_type': 'send_shortname',
                 'shortname': shortname,
-                'message': message
+                'message': message,
+                'guild_id': guild_id,
+                'channel_id': channel_id,
+                'discord_message_id': discord_message_id,
             }
         )
         
@@ -308,7 +333,7 @@ class MeshClient():
     def enqueue_admin_msg(self, msg):
         self._adminqueue.put(msg)
         
-    def insert_tx_packet_to_db(self, sent_packet, ack_requested=True):
+    def insert_tx_packet_to_db(self, sent_packet, discord_guild_id, discord_channel_id, discord_message_id, ack_requested=True):
         
         channel = sent_packet.channel
         hop_limit = sent_packet.hop_limit
@@ -327,7 +352,10 @@ class MeshClient():
             acknowledge_received = False,
             dest_id = dest_id,
             dest_shortname = dest_shortname,
-            dest_longname = dest_longname
+            dest_longname = dest_longname,
+            discord_guild_id = discord_guild_id,
+            discord_channel_id = discord_channel_id,
+            discord_message_id = discord_message_id
         )
         self._db_session.add(db_pkt_obj)
         self._db_session.commit()
@@ -338,30 +366,42 @@ class MeshClient():
             if msg_type == 'send_channel':
                 channel = msg.get('channel')
                 message = msg.get('message')
+                discord_guild_id = msg.get('guild_id')
+                discord_channel_id = msg.get('channel_id')
+                discord_message_id = msg.get('discord_message_id')
                 logging.info(f'Sending message to channel: {channel}')
                 sent_packet = self.iface.sendText(message, channelIndex=channel, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
-                self.insert_tx_packet_to_db(sent_packet)
+                self.insert_tx_packet_to_db(sent_packet, discord_guild_id, discord_channel_id, discord_message_id)
             elif msg_type == 'send_nodenum':
                 nodenum = msg.get('nodenum')
                 message = msg.get('message')
+                discord_guild_id = msg.get('guild_id')
+                discord_channel_id = msg.get('channel_id')
+                discord_message_id = msg.get('discord_message_id')
                 logging.info(f'Sending message to: {nodenum}')
                 sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
-                self.insert_tx_packet_to_db(sent_packet)
+                self.insert_tx_packet_to_db(sent_packet, discord_guild_id, discord_channel_id, discord_message_id)
             elif msg_type == 'send_nodeid':
                 nodeid = msg.get('nodeid')
                 message = msg.get('message')
                 nodenum = int(nodeid, 16)
+                discord_guild_id = msg.get('guild_id')
+                discord_channel_id = msg.get('channel_id')
+                discord_message_id = msg.get('discord_message_id')
                 logging.info(f'Sending message to: {nodenum}')
                 sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
-                self.insert_tx_packet_to_db(sent_packet)
+                self.insert_tx_packet_to_db(sent_packet, discord_guild_id, discord_channel_id, discord_message_id)
             elif msg_type == 'send_shortname':
                 shortname = msg.get('shortname')
                 message = msg.get('message')
                 node_info = self.get_node_info_from_shortname(shortname)
                 nodenum = node_info.get('num')
-                logging.info(f'Sending message to: {nodenum}')
+                discord_guild_id = msg.get('guild_id')
+                discord_channel_id = msg.get('channel_id')
+                discord_message_id = msg.get('discord_message_id')
+                logging.info(f'Sending message to: {nodenum}')                
                 sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
-                self.insert_tx_packet_to_db(sent_packet)
+                self.insert_tx_packet_to_db(sent_packet, discord_guild_id, discord_channel_id, discord_message_id)
             
     def process_admin_queue_message(self, msg):
         if isinstance(msg, dict):

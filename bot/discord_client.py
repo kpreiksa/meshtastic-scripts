@@ -7,11 +7,15 @@ from discord import app_commands
 
 from config_classes import Config
 
+import util
+
 class DiscordBot(discord.Client):
     def __init__(self, mesh_client, *args, **kwargs):
         
         self.config = Config()
         self._discordqueue = queue.Queue(maxsize=20)
+        
+        self._meshresponsequeue = queue.Queue(maxsize=20)
         
         self.mesh_client = mesh_client
         
@@ -34,6 +38,9 @@ class DiscordBot(discord.Client):
     
     def enqueue_msg(self, msg):
         self._discordqueue.put(msg)
+        
+    def enqueue_mesh_response(self, msg):
+        self._meshresponsequeue.put(msg)
 
     async def background_task(self):
         await self.wait_until_ready()
@@ -53,6 +60,31 @@ class DiscordBot(discord.Client):
                 pass
             except Exception as e:
                 logging.exception('Exception processing meshqueue', exc_info=e)
+                
+            try:
+                meshresponse = self._meshresponsequeue.get_nowait()
+                
+                msg_id = meshresponse.get('discord_message_id')
+                ack_by_id = meshresponse.get('response_from_id')
+                ack_by_shorname = meshresponse.get('response_from_shortname')
+                ack_by_longname = meshresponse.get('response_from_longname')
+                
+                ack_time = meshresponse.get('response_rx_time')
+                
+                ack_time_str = util.time_from_ts(ack_time)
+                
+                message = await self.channel.fetch_message(msg_id)       
+                
+                e = message.embeds[0]
+                e.add_field(name='Acknowledged By', value=f'{ack_by_id} | {ack_by_shorname} | {ack_by_longname}', inline=False)
+                e.add_field(name='Acknowledged Time', value=ack_time_str, inline=False)
+                await message.edit(embed=e)
+                
+                self._meshresponsequeue.task_done()
+            except queue.Empty:
+                pass
+            except Exception as e:
+                logging.exception('Exception processing _meshresponsequeue', exc_info=e)
             
             # process stuff on mesh side
             self.mesh_client.background_process()
