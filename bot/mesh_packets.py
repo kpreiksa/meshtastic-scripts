@@ -118,6 +118,26 @@ class TraceroutePacket():
     def snr_towards(self):
         return self._d.get('snrTowards', [])
 
+
+class RoutingPacket():
+    def __init__(self, d):
+        self._d = d
+        
+    def __repr__(self):
+        return f'<Class {self.__class__.__name__}>.'
+    
+    def packet_summary_json(self):
+        out = {
+            'Error Reason': self.error_reason,
+        }
+        return out
+        
+    @property
+    def error_reason(self):
+        return self._d.get('errorReason')
+
+
+
 class NodeInfoPacket():
     def __init__(self, d):
         self._d = d
@@ -192,6 +212,10 @@ class DecodedPacket():
     @property
     def want_response(self):
         return self._d.get('want_response')
+
+    @property
+    def request_id(self):
+        return self._d.get('requestId')
     
     @property
     def telemetry(self):
@@ -223,6 +247,12 @@ class DecodedPacket():
             return self._d.get('text')
         else:
             return None
+
+    @property
+    def routing(self):
+        if self.portnum == 'ROUTING_APP':
+            return RoutingPacket(self._d.get('routing', {}))
+        else: return None
 
 class MeshPacket():
     def __init__(self, d, mesh_client):
@@ -347,6 +377,30 @@ class MeshPacket():
                 mac_address = self.decoded.user.mac_addr,
                 hw_model = self.decoded.user.hw_model,
                 public_key = self.decoded.user.public_key
+            )
+            self._mesh_client._db_session.add(new_packet)
+            self._mesh_client._db_session.commit()
+            
+        elif self.portnum == 'ROUTING_APP':
+            new_packet = DBPacket(
+                channel = self.channel,
+                from_id = self.from_id,
+                from_shortname = self.from_shortname,
+                from_longname = self.from_longname,
+                to_id = self.to_id,
+                to_shortname = self.to_shortname,
+                to_longname = self.to_longname,
+                hop_limit = self.hop_limit,
+                hop_start = self.hop_start,
+                pki_encrypted = self.pki_encrypted,
+                portnum = self.portnum,
+                priority = self.priority,
+                rxTime = self.rxTime,
+                rx_rssi = self.rx_rssi,
+                rx_snr = self.rx_snr,
+                to_all = self.to_all,
+                request_id = self.decoded.request_id,
+                error_reason = self.decoded.routing.error_reason
             )
             self._mesh_client._db_session.add(new_packet)
             self._mesh_client._db_session.commit()

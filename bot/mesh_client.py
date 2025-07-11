@@ -19,6 +19,8 @@ from mesh_node_classes import MeshNode
 from config_classes import Config
 from util import get_current_time_str
 
+from db_classes import TXPacket
+
 # move all of this to config
 battery_warning = 15 # move to config
 green_color = 0x67ea94  # Meshtastic Green
@@ -101,7 +103,53 @@ class MeshClient():
         logging.info(str(dir(node)))
         
     def onMsgResponse(self, d):
-        logging.info(f'Got Response: {d}')
+        # if there is a request Id... look it up in the Db and acknowledge
+        response_from = d.get('from')
+        response_to = d.get('to')
+        response_from_id = d.get('fromId')
+        response_to_id = d.get('toId')
+        response_id = d.get('id')
+        response_rx_time = d.get('rxTime')
+        response_rx_snr = d.get('rxSnr')
+        response_rx_rssi = d.get('rxRssi')
+        response_hop_limit = d.get('hopLimit')
+        response_hop_start = d.get('hopStart')
+        request_id = d.get('decoded', {}).get('requestId')
+        routing_error_reason = d.get('decoded', {}).get('routing', {}).get('errorReason')
+        response_from_shortname = self.get_short_name(response_from_id)    
+        response_from_longname =  self.get_long_name(response_from_id)  
+        response_to_shortname = self.get_short_name(response_to_id)    
+        response_to_longname =  self.get_long_name(response_to_id)  
+        
+        logging.info(f'Got Response to packet: {request_id} from {response_from_id}')
+        db_updated = False
+        matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=request_id).first()
+        if matching_packet: # if it exists
+            if matching_packet.acknowledge_received == True:
+                logging.info(f'Packet already acknowledged')
+            else:
+                matching_packet.acknowledge_received = True
+                matching_packet.response_from = response_from
+                matching_packet.response_from_id = response_from_id
+                matching_packet.response_from_shortname = response_from_shortname
+                matching_packet.response_from_longname = response_from_longname
+                matching_packet.response_to = response_to
+                matching_packet.response_to_id = response_to_id
+                matching_packet.response_to_shortname = response_to_shortname
+                matching_packet.response_to_longname = response_to_longname
+                matching_packet.response_packet_id = response_id
+                matching_packet.response_rx_time = response_rx_time
+                matching_packet.response_rx_snr = response_rx_snr
+                matching_packet.response_rx_rssi = response_rx_rssi
+                matching_packet.response_hop_limit = response_hop_limit
+                matching_packet.response_hop_start = response_hop_start
+                matching_packet.response_routing_error_reason = routing_error_reason
+                self._db_session.commit() # save back to db
+                db_updated = True
+                self.discord_client.enqueue_msg(f'Msg to {matching_packet.dest_id} | {matching_packet.dest_shortname} | {matching_packet.dest_longname} - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
+        else:
+            self.discord_client.enqueue_msg(f'Msg to {response_from_id} |   - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
+        
             
     def __init__(self, db_session):
         self._meshqueue = queue.Queue(maxsize=20)
@@ -260,6 +308,30 @@ class MeshClient():
     def enqueue_admin_msg(self, msg):
         self._adminqueue.put(msg)
         
+    def insert_tx_packet_to_db(self, sent_packet, ack_requested=True):
+        
+        channel = sent_packet.channel
+        hop_limit = sent_packet.hop_limit
+        packet_id = sent_packet.id
+        dest = sent_packet.to
+        dest_id = self.get_node_id_from_num(dest)
+        dest_shortname = self.get_short_name(dest_id)
+        dest_longname = self.get_long_name(dest_id)
+        
+        db_pkt_obj = TXPacket(
+            packet_id = packet_id,
+            channel=channel,
+            hop_limit=hop_limit,
+            dest=dest,
+            acknowledge_requested = ack_requested,
+            acknowledge_received = False,
+            dest_id = dest_id,
+            dest_shortname = dest_shortname,
+            dest_longname = dest_longname
+        )
+        self._db_session.add(db_pkt_obj)
+        self._db_session.commit()
+        
     def process_queue_message(self, msg):
         if isinstance(msg, dict):
             msg_type = msg.get('msg_type')
@@ -267,27 +339,29 @@ class MeshClient():
                 channel = msg.get('channel')
                 message = msg.get('message')
                 logging.info(f'Sending message to channel: {channel}')
-                self.iface.sendText(message, channelIndex=channel, onResponse=self.onMsgResponse)
+                sent_packet = self.iface.sendText(message, channelIndex=channel, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
+                self.insert_tx_packet_to_db(sent_packet)
             elif msg_type == 'send_nodenum':
                 nodenum = msg.get('nodenum')
                 message = msg.get('message')
                 logging.info(f'Sending message to: {nodenum}')
-                self.iface.sendText(message, destinationId=nodenum, onResponse=self.onMsgResponse)
+                sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
+                self.insert_tx_packet_to_db(sent_packet)
             elif msg_type == 'send_nodeid':
                 nodeid = msg.get('nodeid')
                 message = msg.get('message')
                 nodenum = int(nodeid, 16)
                 logging.info(f'Sending message to: {nodenum}')
-                self.iface.sendText(message, destinationId=nodenum, onResponse=self.onMsgResponse)
+                sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
+                self.insert_tx_packet_to_db(sent_packet)
             elif msg_type == 'send_shortname':
                 shortname = msg.get('shortname')
                 message = msg.get('message')
                 node_info = self.get_node_info_from_shortname(shortname)
                 nodenum = node_info.get('num')
                 logging.info(f'Sending message to: {nodenum}')
-                self.iface.sendText(message, destinationId=nodenum, onResponse=self.onMsgResponse)
-            else:
-                pass
+                sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
+                self.insert_tx_packet_to_db(sent_packet)
             
     def process_admin_queue_message(self, msg):
         if isinstance(msg, dict):

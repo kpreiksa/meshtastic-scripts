@@ -179,3 +179,6 @@ temp*json
 mynotes*
 my_node_dump.json
 nodes_dump.json
+
+
+*.db

@@ -47,3 +47,37 @@ class DBPacket(Base):
     mac_address = Column(String)
     hw_model = Column(String)
     public_key = Column(String)
+    
+    # routing
+    request_id = Column(String) # maybe int?
+    error_reason = Column(String)
+    
+    
+class TXPacket(Base):
+    __tablename__ = 'tx_packets'  # Name of the table in the database
+    id = Column(Integer, primary_key=True)
+    packet_id = Column(Integer) # maybe int
+    channel = Column(Integer) # maybe int
+    hop_limit = Column(Integer)
+    dest = Column(Integer)
+    dest_id = Column(String)
+    dest_shortname = Column(String)
+    dest_longname = Column(String)
+    acknowledge_requested = Column(Boolean)
+    acknowledge_received = Column(Boolean)
+    response_from = Column(Integer)
+    response_from_id = Column(String)
+    response_from_shortname = Column(String)
+    response_from_longname = Column(String)
+    response_to = Column(Integer)
+    response_to_id = Column(String)
+    response_to_shortname = Column(String)
+    response_to_longname = Column(String)
+    response_packet_id = Column(Integer)
+    response_rx_time = Column(Integer)
+    response_rx_snr = Column(Double)
+    response_rx_rssi = Column(Double)
+    response_hop_limit = Column(Integer)
+    response_hop_start = Column(Integer)
+    response_routing_error_reason = Column(String)
+    
