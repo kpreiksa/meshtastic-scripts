@@ -3,3 +3,4 @@ meshtastic
 requests
 pytz
 pubsub
+sqlalchemy
