@@ -168,7 +168,8 @@ class MeshClient():
                     }
                 )
         else:
-            self.discord_client.enqueue_msg(f'Msg to {response_from_id} |   - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
+            logging.error(f'No matching packet found for request_id: {request_id}.\n Maybe the packet isnt in the DB yet, and/or is this a self-ack?')
+            # self.discord_client.enqueue_msg(f'Msg to {response_from_id} |   - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
 
 
     def __init__(self, db_session):
