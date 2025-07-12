@@ -16,11 +16,7 @@ from config_classes import Config
 from mesh_client import MeshClient
 from discord_client import DiscordBot
 from util import get_current_time_str
-
-# TODO add try/except for Bleaker dbus error and for ble disconnection (heartbeat error?)
-
-green_color = 0x67ea94  # Meshtastic Green
-red_color = 0xed4245  # Red
+from util import MeshBotColors
 
 # env var params - ie from docker
 IS_DOCKER = os.environ.get('IS_DOCKER')
@@ -30,7 +26,7 @@ if IS_DOCKER:
     log_dir = 'config'
 else:
     log_dir = '.'
-    
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -88,7 +84,7 @@ async def help_command(interaction: discord.Interaction):
         for mesh_channel_index, channel_name in config.channel_names.items():
             help_text += f"`/{channel_name.lower()}` - Send a message in the {channel_name} channel.\n"
 
-        embed = discord.Embed(title="Meshtastic Bot Help", description=help_text, color=green_color)
+        embed = discord.Embed(title="Meshtastic Bot Help", description=help_text, color=MeshBotColors.green())
         embed.set_footer(text="Meshtastic Discord Bot by Kavitate")
         ascii_art_image_url = "https://i.imgur.com/qvo2NkW.jpeg"
         embed.set_image(url=ascii_art_image_url)
@@ -110,23 +106,23 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
             # Strip the leading '!' if present
             if nodeid.startswith('!'):
                 nodeid = nodeid[1:]
-                
+
             shortname = mesh_client.get_short_name(nodeid)
             longname = mesh_client.get_long_name(nodeid)
-            
+
             current_time = get_current_time_str()
-            
+
             # craft message
-            embed = discord.Embed(title="Sending Message", description=message, color=green_color)
+            embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX())
             embed.add_field(name="To Node:", value=f'!{nodeid} | {shortname} | {longname}', inline=True)  # Add '!' in front of nodeid
             embed.set_footer(text=f"{current_time}")
-            
+
             # send message
             await interaction.response.send_message(embed=embed, ephemeral=False)
             mesh_client.enqueue_send_nodeid(nodeid, message)
-            
+
         except ValueError as e:
-            error_embed = discord.Embed(title="Error", description="Invalid hexadecimal node ID.", color=green_color)
+            error_embed = discord.Embed(title="Error", description="Invalid hexadecimal node ID.", color=MeshBotColors.error())
             logging.info(f'/sendid command failed. Invalid hexadecimal node id. Error: {e}')
             await interaction.response.send_message(embed=error_embed, ephemeral=True)
 
@@ -140,14 +136,14 @@ async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
         await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
         logging.info(f'/sendnum command received. NodeNum: {nodenum}. Sending message: {message}')
-        
+
         node_id = mesh_client.get_node_id_from_num(nodenum)
         shortname = mesh_client.get_short_name(node_id)
         longname = mesh_client.get_long_name(node_id)
-        
+
         # craft message
         current_time = get_current_time_str()
-        embed = discord.Embed(title="Sending Message", description=message, color=green_color)
+        embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX())
         embed.add_field(name="To Node:", value=f'{nodenum} | {node_id} | {shortname} | {longname}', inline=True)
         embed.set_footer(text=f"{current_time}")
         # send message
@@ -167,17 +163,17 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
         logging.info(f'/send_shortname command received. nodeName: {node_name}. Sending message: {message}')
 
         current_time = get_current_time_str()
-        
+
         node = mesh_client.get_node_info_from_shortname(node_name)
-        
+
         if isinstance(node, dict):
-            
+
             node_id = node.get('user', {}).get('id')
             shortname = mesh_client.get_short_name(node_id)
             longname = mesh_client.get_long_name(node_id)
 
             # craft message
-            embed = discord.Embed(title="Sending Message", description=message, color=green_color)
+            embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX())
             embed.add_field(name="To Node:", value=f'{node_id} | {shortname} | {longname}', inline=True)
             embed.set_footer(text=f"{current_time}")
             # send message
@@ -185,7 +181,7 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
             discord_message_id = out.message_id
             channel_id = interaction.channel_id
             guild_id = interaction.guild_id
-            
+
             mesh_client.enqueue_send_shortname(node_name, message, guild_id, channel_id, discord_message_id)
 
         elif isinstance(node, int):
@@ -214,10 +210,10 @@ for mesh_channel_index, mesh_channel_name in config.channel_names.items():
         else:
             logging.info(f'/{mesh_channel_name} command received. Sending message: {message}')
             current_time = get_current_time_str()
-            
-            embed = discord.Embed(title=f"Sending Message to {config.channel_names[mesh_channel_index]}:", description=message, color=green_color)
+
+            embed = discord.Embed(title=f"Sending Message to {config.channel_names[mesh_channel_index]}:", description=message, color=MeshBotColors.TX())
             embed.set_footer(text=f"{current_time}")
-            
+
             await interaction.response.send_message(embed=embed)
             mesh_client.enqueue_send_channel(mesh_channel_index, message)
 

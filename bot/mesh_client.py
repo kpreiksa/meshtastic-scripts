@@ -18,18 +18,18 @@ from mesh_packets import MeshPacket
 from mesh_node_classes import MeshNode
 from config_classes import Config
 from util import get_current_time_str
+from util import MeshBotColors
 
 from db_classes import TXPacket
 
 # move all of this to config
 battery_warning = 15 # move to config
-green_color = 0x67ea94  # Meshtastic Green
-red_color = 0xed4245  # Red
-    
+
+
 class MeshClient():
-    
+
     def onReceiveMesh(self, packet, interface):  # Called when a packet arrives from mesh.
-        
+
         try:
             packetObj = MeshPacket(packet, self)
             packetObj.to_db()
@@ -43,12 +43,12 @@ class MeshClient():
                 # session.commit()  # Commit changes to save to the database
                 logging.info("Text message packet received") # For debugging.
                 # logging.info(f"Packet: {packet}") # Print the entire packet for debugging.
-                
+
                 mesh_channel_index = packetObj.channel
                 mesh_channel_name = self.config.channel_names.get(mesh_channel_index, f"Unknown Channel ({mesh_channel_index})")
 
                 current_time = get_current_time_str()
-                
+
                 hop_start = packetObj.hop_start
 
                 if packetObj.hop_limit and packetObj.hop_start:
@@ -57,10 +57,10 @@ class MeshClient():
                     hops = "?"
                     if not packetObj.hop_limit:
                         hop_start = "?"
-                
+
                 logging.info(f'From: {packetObj.from_descriptive}')
 
-                embed = discord.Embed(title="Message Received", description=packetObj.decoded.text, color=green_color)
+                embed = discord.Embed(title="Message Received", description=packetObj.decoded.text, color=MeshBotColors.RX())
                 embed.add_field(name="From Node", value=packetObj.from_descriptive, inline=False)
                 embed.add_field(name="RxSNR / RxRSSI", value=f"{packetObj.rx_snr_str} / {packetObj.rx_rssi_str}", inline=True)
                 embed.add_field(name="Hops", value=f"{hops} / {hop_start}", inline=True)
@@ -79,14 +79,14 @@ class MeshClient():
 
         except Exception as e:
             logging.error(f'Error parsing packet: {str(e)}')
-    
+
     def onConnectionMesh(self, interface, topic=None):
         # interface, obj
-        
-        
+
+
         node_info = interface.getMyNodeInfo()
         node_obj = MeshNode(node_info)
-        
+
         logging.info('***CONNECTED***')
         logging.info('***************')
         logging.info(f'Node Num:   {node_obj.node_num}')
@@ -96,12 +96,12 @@ class MeshClient():
         logging.info(f'MAC Addr:   {node_obj.user_info.mac_address}')
         logging.info(f'HW Model:   {node_obj.user_info.hw_model}')
         logging.info('***************')
-        
+
     def onNodeUpdated(self, node, interface):
         # this happens when a node gets updated... we should update the database
         logging.info(str(type(node)))
         logging.info(str(dir(node)))
-        
+
     def onMsgResponse(self, d):
         # if there is a request Id... look it up in the Db and acknowledge
         response_from = d.get('from')
@@ -116,11 +116,11 @@ class MeshClient():
         response_hop_start = d.get('hopStart')
         request_id = d.get('decoded', {}).get('requestId')
         routing_error_reason = d.get('decoded', {}).get('routing', {}).get('errorReason')
-        response_from_shortname = self.get_short_name(response_from_id)    
-        response_from_longname =  self.get_long_name(response_from_id)  
-        response_to_shortname = self.get_short_name(response_to_id)    
-        response_to_longname =  self.get_long_name(response_to_id)  
-        
+        response_from_shortname = self.get_short_name(response_from_id)
+        response_from_longname =  self.get_long_name(response_from_id)
+        response_to_shortname = self.get_short_name(response_to_id)
+        response_to_longname =  self.get_long_name(response_to_id)
+
         logging.info(f'Got Response to packet: {request_id} from {response_from_id}')
         db_updated = False
         matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=request_id).first()
@@ -169,34 +169,34 @@ class MeshClient():
                 )
         else:
             self.discord_client.enqueue_msg(f'Msg to {response_from_id} |   - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
-        
-            
+
+
     def __init__(self, db_session):
         self._meshqueue = queue.Queue(maxsize=20)
         self._adminqueue = queue.Queue(maxsize=20)
-        
+
         self._db_session = db_session
-        
+
         self.config = Config()
-        
+
         self.iface = None
-        
+
         self.nodes = {}
         self.myNodeInfo = None
-        
+
         self.connect()
-        
-        self.discord_client = None        
-        
+
+        self.discord_client = None
+
         pub.subscribe(self.onReceiveMesh, "meshtastic.receive")
         pub.subscribe(self.onConnectionMesh, "meshtastic.connection.established")
         pub.subscribe(self.onNodeUpdated, "meshtastic.node.updated")
-        
+
     def connect(self):
         interface_info = self.config.interface_info
-        
+
         logging.info(f'Connecting with interface: {interface_info.interface_type}')
-        
+
         if interface_info.interface_type == 'serial':
             try:
                 self.iface = meshtastic.serial_interface.SerialInterface()
@@ -222,16 +222,16 @@ class MeshClient():
         else:
             logging.info(f'Unsupported interface: {interface_info.interface_type}')
             return
-            
+
         myinfo = self.iface.getMyUser()
         shortname = myinfo.get('shortName','???')
         longname = myinfo.get('longName','???')
         self.nodes = self.iface.nodes # this should take precedence
         logging.info(f'Bot connected to Mesh node: {shortname} | {longname} with connection {interface_info.interface_type}')
-        
+
     def link_discord(self, discord_client):
         self.discord_client = discord_client
-        
+
     def get_long_name(self, node_id, default = '?'):
         if node_id in self.nodes:
             return self.nodes[node_id]['user'].get('longName', default)
@@ -241,7 +241,7 @@ class MeshClient():
         if node_id in self.nodes:
             return self.nodes[node_id]['user'].get('shortName', default)
         return default
-    
+
     def get_node_info_from_id(self, node_id):
         if not node_id.startswith('!'):
             node_id = '!' + node_id
@@ -250,7 +250,7 @@ class MeshClient():
     def get_node_info_from_num(self, node_num):
         node_id = '!' + hex(node_num)[2:]
         return self.get_node_info_from_id(self, node_id)
-    
+
     def get_node_id_from_num(self, node_num):
         node_id = '!' + hex(node_num)[2:]
         return node_id
@@ -270,7 +270,7 @@ class MeshClient():
         else:
             logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
             return len(nodes)
-        
+
     def enqueue_send_channel(self, channel, message):
         self.enqueue_msg(
             {
@@ -279,7 +279,7 @@ class MeshClient():
                 'message': message
             }
         )
-        
+
     def enqueue_send_nodenum(self, nodenum, message):
         self.enqueue_msg(
             {
@@ -288,7 +288,7 @@ class MeshClient():
                 'message': message
             }
         )
-        
+
     def enqueue_send_nodeid(self, nodeid, message):
         self.enqueue_msg(
             {
@@ -297,10 +297,10 @@ class MeshClient():
                 'message': message
             }
         )
-        
+
     def enqueue_send_shortname(self, shortname, message, guild_id, channel_id, discord_message_id):
-        
-        
+
+
         self.enqueue_msg(
             {
                 'msg_type': 'send_shortname',
@@ -311,7 +311,7 @@ class MeshClient():
                 'discord_message_id': discord_message_id,
             }
         )
-        
+
     def enqueue_active_nodes(self, active_time):
         self.enqueue_admin_msg(
             {
@@ -319,22 +319,22 @@ class MeshClient():
                 'active_time': active_time
             }
         )
-        
+
     def enqueue_all_nodes(self):
         self.enqueue_admin_msg(
             {
                 'msg_type': 'all_nodes',
             }
         )
-        
+
     def enqueue_msg(self, msg):
         self._meshqueue.put(msg)
-        
+
     def enqueue_admin_msg(self, msg):
         self._adminqueue.put(msg)
-        
+
     def insert_tx_packet_to_db(self, sent_packet, discord_guild_id, discord_channel_id, discord_message_id, ack_requested=True):
-        
+
         channel = sent_packet.channel
         hop_limit = sent_packet.hop_limit
         packet_id = sent_packet.id
@@ -342,7 +342,7 @@ class MeshClient():
         dest_id = self.get_node_id_from_num(dest)
         dest_shortname = self.get_short_name(dest_id)
         dest_longname = self.get_long_name(dest_id)
-        
+
         db_pkt_obj = TXPacket(
             packet_id = packet_id,
             channel=channel,
@@ -359,7 +359,7 @@ class MeshClient():
         )
         self._db_session.add(db_pkt_obj)
         self._db_session.commit()
-        
+
     def process_queue_message(self, msg):
         if isinstance(msg, dict):
             msg_type = msg.get('msg_type')
@@ -399,10 +399,10 @@ class MeshClient():
                 discord_guild_id = msg.get('guild_id')
                 discord_channel_id = msg.get('channel_id')
                 discord_message_id = msg.get('discord_message_id')
-                logging.info(f'Sending message to: {nodenum}')                
+                logging.info(f'Sending message to: {nodenum}')
                 sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
                 self.insert_tx_packet_to_db(sent_packet, discord_guild_id, discord_channel_id, discord_message_id)
-            
+
     def process_admin_queue_message(self, msg):
         if isinstance(msg, dict):
             msg_type = msg.get('msg_type')
@@ -419,7 +419,7 @@ class MeshClient():
                         self.discord_client.enqueue_msg(chunk)
             else:
                 pass
-            
+
     def get_active_nodes(self, time_limit=15):
 
         logging.info(f'get_active_nodes has been called with: {time_limit} mins')
@@ -460,7 +460,7 @@ class MeshClient():
         if len(nodelist) == 0:
             # no nodes found, change response
             nodelist_start = f'**No Nodes seen in the last {time_limit} minutes**'
-            
+
         # sort nodelist and remove ts from it
         nodelist_sorted = sorted(nodelist, key=lambda x: x[1], reverse=True)
         nodelist_sorted = [x[0] for x in nodelist_sorted]
@@ -469,14 +469,14 @@ class MeshClient():
         # Split node list into chunks of 10 rows.
         nodelist_chunks = ["".join(nodelist_sorted[i:i + 10]) for i in range(0, len(nodelist_sorted), 10)]
         return nodelist_chunks
-    
+
     def get_all_nodes(self):
         # Get All nodes = BIG print.
         logging.info(f'get_all_nodes has been called')
 
         # use self.nodes that was pulled 1m ago
         nodelist = []
-        
+
         nodelist_start = f"**All Nodes Seen:**\n"
 
         for node in self.nodes.values():
@@ -532,17 +532,17 @@ class MeshClient():
             embed = discord.Embed(
                 title='Node Battery Low!',
                 description=text,
-                color=red_color
+                color=MeshBotColors.error()
             )
             if self.discord_client:
                 self.discord_client.enqueue_msg(embed)
-        
+
     def background_process(self):
-        
+
         # don't do this stuff every time...
         # self.nodes = self.iface.nodes
         # self.myNodeInfo = self.iface.getMyNodeInfo()
-        
+
         # do this stuff every time
         try:
             meshmessage = self._meshqueue.get_nowait()
@@ -552,7 +552,7 @@ class MeshClient():
             pass
         except Exception as e:
             logging.exception('Exception processing meshqueue', exc_info=e)
-        
+
         try:
             adminmessage = self._adminqueue.get_nowait()
             self.process_admin_queue_message(adminmessage)
@@ -561,4 +561,4 @@ class MeshClient():
             pass
         except Exception as e:
             logging.exception('Exception processing meshqueue', exc_info=e)
-        
+
