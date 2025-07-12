@@ -65,6 +65,10 @@ class DiscordBot(discord.Client):
                 meshresponse = self._meshresponsequeue.get_nowait()
 
                 msg_id = meshresponse.get('discord_message_id')
+                if msg_id is None:
+                    logging.error('No discord_message_id found in mesh response (probably an ACK from self, on a message sent to a channel), skipping message update')
+                    self._meshresponsequeue.task_done()
+                    continue
                 ack_by_id = meshresponse.get('response_from_id')
                 ack_by_shorname = meshresponse.get('response_from_shortname')
                 ack_by_longname = meshresponse.get('response_from_longname')
