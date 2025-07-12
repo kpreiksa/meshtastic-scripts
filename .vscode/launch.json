@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Bot Main",
+            "name": "Py: Bot Main",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/bot/main.py",

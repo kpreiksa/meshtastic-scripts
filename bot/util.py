@@ -1,4 +1,5 @@
 from datetime import datetime
+import discord
 
 def get_current_time_str():
     return datetime.now().strftime('%d %B %Y %I:%M:%S %p')
@@ -9,7 +10,7 @@ def time_from_ts(ts):
 class MeshBotColors():
     _item_dict = {
         'green': 0x67ea94,
-        'red': 0xed4245,
+        'red': discord.Color.red(),
         'peach': 0xEA9467,
         'violet': 0x9467EA,
         'magenta': 0xEA67AD

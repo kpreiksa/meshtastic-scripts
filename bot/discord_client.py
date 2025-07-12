@@ -1,6 +1,7 @@
 import logging
 import queue
 import asyncio
+from functools import wraps
 
 import discord
 from discord import app_commands
@@ -93,3 +94,23 @@ class DiscordBot(discord.Client):
             self.mesh_client.background_process()
 
             await asyncio.sleep(5)
+
+    @staticmethod
+    def only_in_channel(allowed_channel_id: int): # must pass allowed_channel_id as argument becaues this is compiled at import time, and you cannot pass self in
+        def decorator(func):
+            @wraps(func)
+            async def wrapper(interaction: discord.Interaction, *args, **kwargs):
+                if interaction.channel_id != allowed_channel_id:
+                    command_name = interaction.command.name if interaction.command else "unknown"
+                    logging.error(f'Rejected /{command_name} command, sent in wrong channel: {interaction.channel_id}')
+                    embed = discord.Embed(
+                        title='Wrong Channel',
+                        description=f'Commands for this bot are only allowed in <#{allowed_channel_id}>',
+                        color=util.MeshBotColors.error()
+                    )
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                    return
+                return await func(interaction, *args, **kwargs)
+            return wrapper
+        return decorator
+
