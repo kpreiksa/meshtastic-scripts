@@ -41,14 +41,15 @@ class HelpView(View):
         super().__init__(timeout=None)
 
         # Create buttons
-        self.add_item(Button(label="Kavitate", style=ButtonStyle.link, url="https://github.com/Kavitate"))
+        self.add_item(Button(label="Original Bot", style=ButtonStyle.link, url="https://github.com/Kavitate"))
+        self.add_item(Button(label="Preiksa Meshtastic", style=ButtonStyle.link, url="https://github.com/kpreiksa/meshtastic-scripts"))
         self.add_item(Button(label="Meshtastic", style=ButtonStyle.link, url="https://meshtastic.org"))
         self.add_item(Button(label="Meshmap", style=ButtonStyle.link, url="https://meshmap.net"))
         self.add_item(Button(label="Python Meshtastic Docs", style=ButtonStyle.link, url="https://python.meshtastic.org/index.html"))
 
-
-
-engine = create_engine('sqlite:///example.db')
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+engine = create_engine(f'sqlite:///{log_dir}/example.db')
 db_base.Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
