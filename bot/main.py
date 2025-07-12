@@ -103,10 +103,6 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
     else:
         logging.info(f'/sendid command received. ID: {nodeid}. Message: {message}. Attempting to send')
         try:
-            # Strip the leading '!' if present
-            if nodeid.startswith('!'):
-                nodeid = nodeid[1:]
-
             shortname = mesh_client.get_short_name(nodeid)
             longname = mesh_client.get_long_name(nodeid)
 
@@ -114,7 +110,7 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
 
             # craft message
             embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX())
-            embed.add_field(name="To Node:", value=f'!{nodeid} | {shortname} | {longname}', inline=True)  # Add '!' in front of nodeid
+            embed.add_field(name="To Node:", value=f'{nodeid} | {shortname} | {longname}', inline=True)  # Add '!' in front of nodeid
             embed.set_footer(text=f"{current_time}")
 
             # send message
@@ -166,6 +162,7 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
 
         node = mesh_client.get_node_info_from_shortname(node_name)
 
+        # TODO add get_node_id_from_shortname to mesh_client, and make the function return the node_id and a list of suggested nodes if multiple found or none found
         if isinstance(node, dict):
 
             node_id = node.get('user', {}).get('id')

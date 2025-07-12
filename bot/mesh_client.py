@@ -235,11 +235,17 @@ class MeshClient():
     def get_long_name(self, node_id, default = '?'):
         if node_id in self.nodes:
             return self.nodes[node_id]['user'].get('longName', default)
+        # TODO Decide if we want to do this
+        # elif node_id == '!ffffffff':
+        #     return '^all'
         return default
 
     def get_short_name(self, node_id, default = '?'):
         if node_id in self.nodes:
             return self.nodes[node_id]['user'].get('shortName', default)
+        # TODO Decide if we want to do this
+        # elif node_id == '!ffffffff':
+        #     return '^all'
         return default
 
     def get_node_info_from_id(self, node_id):
@@ -384,6 +390,9 @@ class MeshClient():
             elif msg_type == 'send_nodeid':
                 nodeid = msg.get('nodeid')
                 message = msg.get('message')
+                # strip ! off nodeid if present
+                if nodeid.startswith('!'):
+                    nodeid = nodeid[1:]
                 nodenum = int(nodeid, 16)
                 discord_guild_id = msg.get('guild_id')
                 discord_channel_id = msg.get('channel_id')
