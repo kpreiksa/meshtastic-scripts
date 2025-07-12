@@ -235,17 +235,15 @@ class MeshClient():
     def get_long_name(self, node_id, default = '?'):
         if node_id in self.nodes:
             return self.nodes[node_id]['user'].get('longName', default)
-        # TODO Decide if we want to do this
-        # elif node_id == '!ffffffff':
-        #     return '^all'
+        elif node_id.lower() == '!ffffffff':
+            return 'Broadcast'
         return default
 
     def get_short_name(self, node_id, default = '?'):
         if node_id in self.nodes:
             return self.nodes[node_id]['user'].get('shortName', default)
-        # TODO Decide if we want to do this
-        # elif node_id == '!ffffffff':
-        #     return '^all'
+        elif node_id.lower() == '!ffffffff':
+            return '^all'
         return default
 
     def get_node_info_from_id(self, node_id):
@@ -286,21 +284,27 @@ class MeshClient():
             }
         )
 
-    def enqueue_send_nodenum(self, nodenum, message):
+    def enqueue_send_nodenum(self, nodenum, message, guild_id, channel_id, discord_message_id):
         self.enqueue_msg(
             {
                 'msg_type': 'send_nodenum',
                 'nodenum': nodenum,
-                'message': message
+                'message': message,
+                'guild_id': guild_id,
+                'channel_id': channel_id,
+                'discord_message_id': discord_message_id,
             }
         )
 
-    def enqueue_send_nodeid(self, nodeid, message):
+    def enqueue_send_nodeid(self, nodeid, message, guild_id, channel_id, discord_message_id):
         self.enqueue_msg(
             {
                 'msg_type': 'send_nodeid',
                 'nodeid': nodeid,
-                'message': message
+                'message': message,
+                'guild_id': guild_id,
+                'channel_id': channel_id,
+                'discord_message_id': discord_message_id,
             }
         )
 
@@ -411,6 +415,9 @@ class MeshClient():
                 logging.info(f'Sending message to: {nodenum}')
                 sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
                 self.insert_tx_packet_to_db(sent_packet, discord_guild_id, discord_channel_id, discord_message_id)
+        else:
+            logging.error(f'Unknown message type in mesh queue: {type(msg)}')
+            logging.error(f'Message content: {msg}')
 
     def process_admin_queue_message(self, msg):
         if isinstance(msg, dict):
@@ -565,9 +572,9 @@ class MeshClient():
         try:
             adminmessage = self._adminqueue.get_nowait()
             self.process_admin_queue_message(adminmessage)
-            self._meshqueue.task_done()
+            self._adminqueue.task_done()
         except queue.Empty:
             pass
         except Exception as e:
-            logging.exception('Exception processing meshqueue', exc_info=e)
+            logging.exception('Exception processing adminqueue', exc_info=e)
 

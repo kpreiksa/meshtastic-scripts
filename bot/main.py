@@ -114,8 +114,12 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
             embed.set_footer(text=f"{current_time}")
 
             # send message
-            await interaction.response.send_message(embed=embed, ephemeral=False)
-            mesh_client.enqueue_send_nodeid(nodeid, message)
+            out = await interaction.response.send_message(embed=embed, ephemeral=False)
+            discord_message_id = out.message_id
+            channel_id = interaction.channel_id
+            guild_id = interaction.guild_id
+
+            mesh_client.enqueue_send_nodeid(nodeid, message, guild_id, channel_id, discord_message_id)
 
         except ValueError as e:
             error_embed = discord.Embed(title="Error", description="Invalid hexadecimal node ID.", color=MeshBotColors.error())
@@ -132,7 +136,7 @@ async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
         await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
         logging.info(f'/sendnum command received. NodeNum: {nodenum}. Sending message: {message}')
-
+        # TODO add error handling for nodenum
         node_id = mesh_client.get_node_id_from_num(nodenum)
         shortname = mesh_client.get_short_name(node_id)
         longname = mesh_client.get_long_name(node_id)
@@ -143,8 +147,12 @@ async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
         embed.add_field(name="To Node:", value=f'{nodenum} | {node_id} | {shortname} | {longname}', inline=True)
         embed.set_footer(text=f"{current_time}")
         # send message
-        await interaction.response.send_message(embed=embed)
-        mesh_client.enqueue_send_nodenum(nodenum, message)
+        out = await interaction.response.send_message(embed=embed)
+        discord_message_id = out.message_id
+        channel_id = interaction.channel_id
+        guild_id = interaction.guild_id
+
+        mesh_client.enqueue_send_nodenum(nodenum, message, guild_id, channel_id, discord_message_id)
 
 
 @discord_client.tree.command(name="send_shortname", description="Send a message to a specific node.")
