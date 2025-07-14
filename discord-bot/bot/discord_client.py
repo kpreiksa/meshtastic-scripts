@@ -19,6 +19,7 @@ class DiscordBot(discord.Client):
         self._meshresponsequeue = queue.Queue(maxsize=20)
 
         self.mesh_client = mesh_client
+        self.mesh_client.link_discord(self)
 
         super().__init__(*args, **kwargs)
         self.tree = app_commands.CommandTree(self)
@@ -27,12 +28,15 @@ class DiscordBot(discord.Client):
         self.dis_channel_id = int(self.config.discord_channel_id)
 
 
-    async def setup_hook(self) -> None:  # Create the background task and run it in the background.
-        self.bg_task = self.loop.create_task(self.background_task())
-        await self.tree.sync()
+    # async def setup_hook(self) -> None:  # Create the background task and run it in the background.
+    #     self.bg_task = self.loop.create_task(self.background_task())
+    #     await self.tree.sync()
 
     async def on_ready(self):
         logging.info(f'Logged in as {self.user} (ID: {self.user.id})')
+        self.bg_task = self.loop.create_task(self.background_task())
+        self.mesh_client.connect() # once discord is ready... conncet to mesh
+        await self.tree.sync()
 
     def check_channel_id(self, other_channel_id):
         return other_channel_id == self.dis_channel_id

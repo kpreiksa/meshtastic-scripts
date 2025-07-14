@@ -20,7 +20,7 @@ from config_classes import Config
 from util import get_current_time_str
 from util import MeshBotColors
 
-from db_classes import TXPacket
+from db_classes import TXPacket, MeshNodeDB
 
 # move all of this to config
 battery_warning = 15 # move to config
@@ -84,17 +84,33 @@ class MeshClient():
         # interface, obj
 
 
-        node_info = interface.getMyNodeInfo()
-        node_obj = MeshNode(node_info)
+        self.myNodeInfo = interface.getMyNodeInfo()
+        self.nodes = self.iface.nodes # this should take precedence       
+        
+        # use nodesByNum because it will include ones that we do not have userInfo for
+        for node_num, node in self.iface.nodesByNum.items():
+            # see if node with num exists in db
+            matching_node = self._db_session.query(MeshNodeDB).filter_by(node_num=node_num).first()
+            if matching_node:
+                # TODO: Make update func
+                pass
+            else:
+                new_node = MeshNodeDB.from_dict(node, self)
+                self._db_session.add(new_node)
+        # should only need to commit once
+        self._db_session.commit()     
+        
+        #TODO: Combine this with MeshNodeDB
+        self.my_node_info = MeshNode(self.myNodeInfo) # TODO: use this as myNodeInfo
 
         logging.info('***CONNECTED***')
         logging.info('***************')
-        logging.info(f'Node Num:   {node_obj.node_num}')
-        logging.info(f'Node ID:    {node_obj.user_info.user_id}')
-        logging.info(f'Short Name: {node_obj.user_info.short_name}')
-        logging.info(f'Long Name:  {node_obj.user_info.long_name}')
-        logging.info(f'MAC Addr:   {node_obj.user_info.mac_address}')
-        logging.info(f'HW Model:   {node_obj.user_info.hw_model}')
+        logging.info(f'Node Num:   {self.my_node_info.node_num}')
+        logging.info(f'Node ID:    {self.my_node_info.user_info.user_id}')
+        logging.info(f'Short Name: {self.my_node_info.user_info.short_name}')
+        logging.info(f'Long Name:  {self.my_node_info.user_info.long_name}')
+        logging.info(f'MAC Addr:   {self.my_node_info.user_info.mac_address}')
+        logging.info(f'HW Model:   {self.my_node_info.user_info.hw_model}')
         logging.info('***************')
 
     def onNodeUpdated(self, node, interface):
@@ -183,15 +199,12 @@ class MeshClient():
         self.iface = None
 
         self.nodes = {}
-        self.myNodeInfo = None
+        self.myNodeInfo = None #TODO: switch this to use the node object created onConnectionMesh
 
-        self.connect()
+        # self.connect()
 
         self.discord_client = None
 
-        pub.subscribe(self.onReceiveMesh, "meshtastic.receive")
-        pub.subscribe(self.onConnectionMesh, "meshtastic.connection.established")
-        pub.subscribe(self.onNodeUpdated, "meshtastic.node.updated")
 
     def connect(self):
         interface_info = self.config.interface_info
@@ -223,12 +236,13 @@ class MeshClient():
         else:
             logging.info(f'Unsupported interface: {interface_info.interface_type}')
             return
+        
+        pub.subscribe(self.onReceiveMesh, "meshtastic.receive")
+        pub.subscribe(self.onConnectionMesh, "meshtastic.connection.established")
+        pub.subscribe(self.onNodeUpdated, "meshtastic.node.updated")
 
-        myinfo = self.iface.getMyUser()
-        shortname = myinfo.get('shortName','???')
-        longname = myinfo.get('longName','???')
-        self.nodes = self.iface.nodes # this should take precedence
-        logging.info(f'Bot connected to Mesh node: {shortname} | {longname} with connection {interface_info.interface_type}')
+        # myinfo = self.iface.getMyUser()
+        #logging.info(f'Bot connected to Mesh node: {shortname} | {longname} with connection {interface_info.interface_type}')
 
     def link_discord(self, discord_client):
         self.discord_client = discord_client
@@ -355,6 +369,7 @@ class MeshClient():
         dest_longname = self.get_long_name(dest_id)
 
         db_pkt_obj = TXPacket(
+            discord_bot_user_id = self.discord_client.user.id,
             packet_id = packet_id,
             channel=channel,
             hop_limit=hop_limit,
@@ -532,6 +547,8 @@ class MeshClient():
 
     def check_battery(self, channel, battery_warning=battery_warning):
         # runs every minute, not eff but idk what else to do
+        
+        #TODO: use Node obj created in onConnectionMesh. Possibly make it auto-updating when accessed
 
         shortname = self.myNodeInfo.get('user',{}).get('shortName','???')
         longname = self.myNodeInfo.get('user',{}).get('longName','???')
@@ -555,9 +572,13 @@ class MeshClient():
                 self.discord_client.enqueue_msg(embed)
 
     def background_process(self):
-
-        # don't do this stuff every time...
+        
+        #TODO: Update nodes. Not sure if we can do it every time. 
+        #TODO: Update local nodeDB (SQL)
         # self.nodes = self.iface.nodes
+        
+        #TODO: use Node obj created in onConnectionMesh. Possibly make it auto-updating when accessed
+        # instead of updating here
         self.myNodeInfo = self.iface.getMyNodeInfo()
 
         # do this stuff every time
