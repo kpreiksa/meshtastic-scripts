@@ -173,7 +173,7 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-bot/config.json
+discord-bot/config/config.json
 temp*json
 *tar
 mynotes*

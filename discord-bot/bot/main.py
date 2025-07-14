@@ -232,7 +232,7 @@ async def debug(interaction: discord.Interaction):
     logging.info(f'/debug received, printing debug info')
 
     # calculate last heard
-    lastheard = discord_client.myNodeInfo.get('lastHeard')
+    lastheard = discord_client.myNodeInfo.get('lastHeard') # TODO Need to fix this (replace myNodeInfo with soemthing else)
     if lastheard: # ignore if doesn't have lastHeard property
         ts = int(lastheard)
         # if ts > time.time() - (time_limit * 60): # Only include if its less then time_limit

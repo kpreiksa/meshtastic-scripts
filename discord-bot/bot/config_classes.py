@@ -4,15 +4,15 @@ import json
 
 
 class Config():
-    
+
     class InterfaceInfo():
         def __init__(self, d):
             self._d = d
-            
+
         @property
         def interface_type(self):
             return self._d.get('method', 'serial')
-            
+
         @property
         def interface_address(self):
             if self.interface_type == 'tcp':
@@ -20,7 +20,7 @@ class Config():
             else:
                 logging.debug(f'interface_address is invalid for interface_type: {self.interface_type}')
                 return None
-            
+
         @property
         def interface_port(self):
             if self.interface_type == 'tcp':
@@ -28,22 +28,22 @@ class Config():
             else:
                 logging.debug(f'interface_port is invalid for interface_type: {self.interface_type}')
                 return None
-            
+
         @property
         def interface_ble_node(self):
             if self.interface_type == 'ble':
                 return self._d.get('ble_node')
             else:
                 logging.debug(f'interface_ble_node is invalid for interface_type: {self.interface_type}')
-                return None     
-    
+                return None
+
     def __init__(self):
         self._config = self.load_config()
-    
+
     def load_config(self, config_filepath=None):
         config = {}
         if not config_filepath:
-            config_filepath = os.path.join(os.path.dirname(__file__), 'config.json')
+            config_filepath = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'config.json')
         if os.path.exists(config_filepath):
             try:
                 logging.info(f'Found config.json, attempting to load configuration.')
@@ -134,27 +134,27 @@ class Config():
             config['channel_names'][9] = CHANNEL_9
 
         return config
-    
+
     @property
     def discord_bot_token(self):
         return self._config.get('discord_bot_token')
-    
+
     @property
     def discord_channel_id(self):
         return self._config.get('discord_channel_id')
-    
+
     @property
     def time_zone(self):
         return self._config.get('time_zone')
-    
+
     @property
     def is_docker(self):
         return os.environ.get('IS_DOCKER')
-    
+
     @property
     def channel_names(self):
         return self._config.get('channel_names', {})
-    
+
     @property
     def interface_info(self):
         return Config.InterfaceInfo(self._config.get('interface_info', {}))
