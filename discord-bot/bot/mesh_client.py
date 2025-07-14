@@ -558,7 +558,7 @@ class MeshClient():
 
         # don't do this stuff every time...
         # self.nodes = self.iface.nodes
-        # self.myNodeInfo = self.iface.getMyNodeInfo()
+        self.myNodeInfo = self.iface.getMyNodeInfo()
 
         # do this stuff every time
         try:

@@ -232,7 +232,7 @@ async def debug(interaction: discord.Interaction):
     logging.info(f'/debug received, printing debug info')
 
     # calculate last heard
-    lastheard = discord_client.myNodeInfo.get('lastHeard') # TODO Need to fix this (replace myNodeInfo with soemthing else)
+    lastheard = mesh_client.myNodeInfo.get('lastHeard') # TODO Need to fix this (replace myNodeInfo with soemthing else)
     if lastheard: # ignore if doesn't have lastHeard property
         ts = int(lastheard)
         # if ts > time.time() - (time_limit * 60): # Only include if its less then time_limit
@@ -245,7 +245,7 @@ async def debug(interaction: discord.Interaction):
     debug_text = f"```lastHeard: {timestr}\n"
     for thing in ['user', 'deviceMetrics','localStats']:
         debug_text += f'{thing} items:\n'
-        for key, value in discord_client.myNodeInfo.get(thing,{}).items():
+        for key, value in mesh_client.myNodeInfo.get(thing,{}).items():
             debug_text += f"  {key}: {value}\n"
     debug_text += '```'
 
@@ -257,7 +257,7 @@ async def debug(interaction: discord.Interaction):
     try:
         default = lambda o: f'<<not serializable data: {type(o).__qualname__}>>'
         with open(my_node_dump, 'w', encoding='utf-8', errors='ignore') as f:
-            json.dump(discord_client.myNodeInfo, f, indent=4, default=default)
+            json.dump(mesh_client.myNodeInfo, f, indent=4, default=default)
         logging.info(f'Wrote my node info to {my_node_dump}')
     except Exception as e:
         logging.info(f'Error trying to dump my node info. \nError: {e}\n')
@@ -267,7 +267,7 @@ async def debug(interaction: discord.Interaction):
     try:
         default = lambda o: f'<<not serializable data: {type(o).__qualname__}>>'
         with open(nodes_dump, 'w', encoding='utf-8', errors='ignore') as f:
-            json.dump(discord_client.nodes, f, indent=4, default=default)
+            json.dump(mesh_client.nodes, f, indent=4, default=default)
         logging.info(f'Wrote nodes info to {nodes_dump}')
     except Exception as e:
         logging.info(f'Error trying to dump all nodes. \nError: {e}\n')
