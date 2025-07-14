@@ -11,9 +11,9 @@ from config_classes import Config
 import util
 
 class DiscordBot(discord.Client):
-    def __init__(self, mesh_client, *args, **kwargs):
+    def __init__(self, mesh_client, config, *args, **kwargs):
 
-        self.config = Config()
+        self.config = config
         self._discordqueue = queue.Queue(maxsize=20)
 
         self._meshresponsequeue = queue.Queue(maxsize=20)

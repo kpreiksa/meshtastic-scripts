@@ -82,13 +82,13 @@ class MeshClient():
 
     def onConnectionMesh(self, interface, topic=None):
         # interface, obj
-        
+
         self.myNodeInfo = interface.getMyNodeInfo()
         self.my_node_info = MeshNode(self.myNodeInfo) # TODO: use this as myNodeInfo
 
-        
-        self.nodes = self.iface.nodes # this should take precedence       
-        
+
+        self.nodes = self.iface.nodes # this should take precedence
+
         # use nodesByNum because it will include ones that we do not have userInfo for
         for node_num, node in self.iface.nodesByNum.items():
             # see if node with num exists in db
@@ -100,8 +100,8 @@ class MeshClient():
                 new_node = MeshNodeDB.from_dict(node, self)
                 self._db_session.add(new_node)
         # should only need to commit once
-        self._db_session.commit()     
-        
+        self._db_session.commit()
+
         logging.info('***CONNECTED***')
         logging.info('***************')
         logging.info(f'Node Num:   {self.my_node_info.node_num}')
@@ -187,13 +187,13 @@ class MeshClient():
             # self.discord_client.enqueue_msg(f'Msg to {response_from_id} |   - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
 
 
-    def __init__(self, db_session):
+    def __init__(self, db_session, config):
         self._meshqueue = queue.Queue(maxsize=20)
         self._adminqueue = queue.Queue(maxsize=20)
 
         self._db_session = db_session
 
-        self.config = Config()
+        self.config = config
 
         self.iface = None
 
@@ -234,7 +234,7 @@ class MeshClient():
         else:
             logging.info(f'Unsupported interface: {interface_info.interface_type}')
             return
-        
+
         pub.subscribe(self.onReceiveMesh, "meshtastic.receive")
         pub.subscribe(self.onConnectionMesh, "meshtastic.connection.established")
         pub.subscribe(self.onNodeUpdated, "meshtastic.node.updated")
@@ -546,7 +546,7 @@ class MeshClient():
 
     def check_battery(self, channel, battery_warning=battery_warning):
         # runs every minute, not eff but idk what else to do
-        
+
         #TODO: use Node obj created in onConnectionMesh. Possibly make it auto-updating when accessed
 
         shortname = self.myNodeInfo.get('user',{}).get('shortName','???')
@@ -571,11 +571,11 @@ class MeshClient():
                 self.discord_client.enqueue_msg(embed)
 
     def background_process(self):
-        
-        #TODO: Update nodes. Not sure if we can do it every time. 
+
+        #TODO: Update nodes. Not sure if we can do it every time.
         #TODO: Update local nodeDB (SQL)
         # self.nodes = self.iface.nodes
-        
+
         #TODO: use Node obj created in onConnectionMesh. Possibly make it auto-updating when accessed
         # instead of updating here
         self.myNodeInfo = self.iface.getMyNodeInfo()

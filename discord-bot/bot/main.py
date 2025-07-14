@@ -55,8 +55,8 @@ db_base.Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
 config = Config()
-mesh_client = MeshClient(db_session=session) # create the mesh client but do not connect yet
-discord_client = DiscordBot(mesh_client, intents=discord.Intents.default())
+mesh_client = MeshClient(db_session=session, config=config) # create the mesh client but do not connect yet
+discord_client = DiscordBot(mesh_client, config, intents=discord.Intents.default())
 #mesh_client.link_discord(discord_client)
 
 @discord_client.tree.command(name="help", description="Shows the help message.")
