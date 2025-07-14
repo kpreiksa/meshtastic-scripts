@@ -82,9 +82,11 @@ class MeshClient():
 
     def onConnectionMesh(self, interface, topic=None):
         # interface, obj
-
-
+        
         self.myNodeInfo = interface.getMyNodeInfo()
+        self.my_node_info = MeshNode(self.myNodeInfo) # TODO: use this as myNodeInfo
+
+        
         self.nodes = self.iface.nodes # this should take precedence       
         
         # use nodesByNum because it will include ones that we do not have userInfo for
@@ -100,9 +102,6 @@ class MeshClient():
         # should only need to commit once
         self._db_session.commit()     
         
-        #TODO: Combine this with MeshNodeDB
-        self.my_node_info = MeshNode(self.myNodeInfo) # TODO: use this as myNodeInfo
-
         logging.info('***CONNECTED***')
         logging.info('***************')
         logging.info(f'Node Num:   {self.my_node_info.node_num}')
@@ -200,8 +199,7 @@ class MeshClient():
 
         self.nodes = {}
         self.myNodeInfo = None #TODO: switch this to use the node object created onConnectionMesh
-
-        # self.connect()
+        self.my_node_info = None
 
         self.discord_client = None
 
@@ -369,7 +367,8 @@ class MeshClient():
         dest_longname = self.get_long_name(dest_id)
 
         db_pkt_obj = TXPacket(
-            discord_bot_user_id = self.discord_client.user.id,
+            publisher_mesh_node_num = self.my_node_info.node_num,
+            publisher_discord_bot_user_id = self.discord_client.user.id,
             packet_id = packet_id,
             channel=channel,
             hop_limit=hop_limit,

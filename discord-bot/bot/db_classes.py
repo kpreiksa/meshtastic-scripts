@@ -6,7 +6,8 @@ class DBPacket(Base):
     __tablename__ = 'packets'  # Name of the table in the database
     id = Column(Integer, primary_key=True)
     
-    discord_bot_user_id = Column(String) # it is a big integer...
+    publisher_mesh_node_num = Column(String)
+    publisher_discord_bot_user_id = Column(String) # it is a big integer...
     
     channel = Column(Integer)
     from_id = Column(String)
@@ -60,8 +61,8 @@ class TXPacket(Base):
     __tablename__ = 'tx_packets'  # Name of the table in the database
     id = Column(Integer, primary_key=True)
     
-    discord_bot_user_id = Column(String) # it is a big integer...
-    
+    publisher_mesh_node_num = Column(String)
+    publisher_discord_bot_user_id = Column(String) # it is a big integer...
     
     packet_id = Column(Integer) # maybe int
     channel = Column(Integer) # maybe int
@@ -96,7 +97,8 @@ class MeshNodeDB(Base):
     
     id = Column(Integer, primary_key=True)
     
-    discord_bot_user_id = Column(String) # it is a big integer...
+    publisher_mesh_node_num = Column(String)
+    publisher_discord_bot_user_id = Column(String) # it is a big integer...
     
     # all of the following info may or may not be there for each node
     # no user info means we don't know the name yet
@@ -132,7 +134,8 @@ class MeshNodeDB(Base):
     
     def from_dict(d, mesh_client):
         return MeshNodeDB(
-            discord_bot_user_id = mesh_client.discord_client.user.id,
+            publisher_mesh_node_num = mesh_client.my_node_info.node_num,
+            publisher_discord_bot_user_id = mesh_client.discord_client.user.id,
             node_num = d.get('num'),
             is_favorite = d.get('is_favorite'),
             snr = d.get('snr'),

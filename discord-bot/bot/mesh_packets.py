@@ -275,7 +275,8 @@ class MeshPacket():
     def to_db(self):
         if self.portnum == 'TEXT_MESSAGE_APP':
             new_packet = DBPacket(
-                discord_bot_user_id = self._mesh_client.discord_client.user.id,
+                publisher_mesh_node_num = self._mesh_client.my_node_info.node_num,
+                publisher_discord_bot_user_id = self._mesh_client.discord_client.user.id,
                 channel = self.channel,
                 from_id = self.from_id,
                 from_shortname = self.from_shortname,
@@ -299,7 +300,8 @@ class MeshPacket():
             self._mesh_client._db_session.commit()
         elif self.portnum == 'POSITION_APP':
             new_packet = DBPacket(
-                discord_bot_user_id = self._mesh_client.discord_client.user.id,
+                publisher_mesh_node_num = self._mesh_client.my_node_info.node_num,
+                publisher_discord_bot_user_id = self._mesh_client.discord_client.user.id,
                 channel = self.channel,
                 from_id = self.from_id,
                 from_shortname = self.from_shortname,
@@ -328,7 +330,8 @@ class MeshPacket():
 
         elif self.portnum == 'TELEMETRY_APP':
             new_packet = DBPacket(
-                discord_bot_user_id = self._mesh_client.discord_client.user.id,
+                publisher_mesh_node_num = self._mesh_client.my_node_info.node_num,
+                publisher_discord_bot_user_id = self._mesh_client.discord_client.user.id,
                 channel = self.channel,
                 from_id = self.from_id,
                 from_shortname = self.from_shortname,
@@ -357,7 +360,8 @@ class MeshPacket():
 
         elif self.portnum == 'NODEINFO_APP':
             new_packet = DBPacket(
-                discord_bot_user_id = self._mesh_client.discord_client.user.id,
+                publisher_mesh_node_num = self._mesh_client.my_node_info.node_num,
+                publisher_discord_bot_user_id = self._mesh_client.discord_client.user.id,
                 channel = self.channel,
                 from_id = self.from_id,
                 from_shortname = self.from_shortname,
@@ -387,7 +391,8 @@ class MeshPacket():
 
         elif self.portnum == 'ROUTING_APP':
             new_packet = DBPacket(
-                discord_bot_user_id = self._mesh_client.discord_client.user.id,
+                publisher_mesh_node_num = self._mesh_client.my_node_info.node_num,
+                publisher_discord_bot_user_id = self._mesh_client.discord_client.user.id,
                 channel = self.channel,
                 from_id = self.from_id,
                 from_shortname = self.from_shortname,
@@ -412,7 +417,8 @@ class MeshPacket():
 
         else:
             new_packet = DBPacket(
-                discord_bot_user_id = self._mesh_client.discord_client.user.id,
+                publisher_mesh_node_num = self._mesh_client.my_node_info.node_num,
+                publisher_discord_bot_user_id = self._mesh_client.discord_client.user.id,
                 channel = self.channel,
                 from_id = self.from_id,
                 from_shortname = self.from_shortname,
