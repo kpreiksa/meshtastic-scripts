@@ -308,6 +308,37 @@ async def ham(interaction: discord.Interaction, callsign: str):
     embed.add_field(name="FCC URL", value=data['otherInfo']['ulsUrl'], inline=False)
 
     await interaction.response.send_message(embed=embed)
+    
+@discord_client.tree.command(name='map', description=f"Lookup node location and display map.")
+async def get_node_map(interaction: discord.Interaction, node_name: str, map_zoom_level: int = 12):
+    logging.info(f'/map command received.')
+    
+    node = mesh_client.get_node_info_from_shortname(node_name)
+    current_time = get_current_time_str()
+    
+    if not config.gmaps_api_key:
+        embed = discord.Embed(title=f"Error: This command requires a google maps API key in config.json.", color=MeshBotColors.red())
+        
+    if node:
+        # get the lat/long
+        if isinstance(node, dict) and 'position' in node:
+            embed = discord.Embed(title=f"Location for Node: {node_name}:", color=MeshBotColors.green())
+            embed.add_field(name='Lat/Lon', value=f'{lat},{lon}')
+            pos_data = node['position']
+            lat = pos_data.get('latitude')
+            lon = pos_data.get('longitude')            
+            url = f'https://maps.googleapis.com/maps/api/staticmap?center={lat},{lon}&zoom={map_zoom_level}&size=400x400&key={config.gmaps_api_key}&markers=color:green|label:{node_name}|{lat},{lon}'
+            embed.set_image(url=url)
+        else:
+            embed = discord.Embed(title=f"Location data unavailable for Node: {node_name}.", color=MeshBotColors.red())
+                
+    else:
+        embed = discord.Embed(title=f"Error: Node with shotname {node_name} not found.", color=MeshBotColors.red())
+        
+        
+    embed.set_footer(text=f"{current_time}")
+
+    await interaction.response.send_message(embed=embed)
 
 def run_discord_bot():
     try:

@@ -138,6 +138,10 @@ class Config():
     @property
     def discord_bot_token(self):
         return self._config.get('discord_bot_token')
+    
+    @property
+    def gmaps_api_key(self):
+        return self._config.get('gmaps_api_key')
 
     @property
     def discord_channel_id(self):
