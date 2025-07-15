@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import aiohttp
 from datetime import datetime
 import discord
 from discord import ButtonStyle
@@ -273,6 +274,40 @@ async def debug(interaction: discord.Interaction):
         logging.info(f'Error trying to dump all nodes. \nError: {e}\n')
 
     await asyncio.sleep(1)
+    
+# Callsign Search Command
+@discord_client.tree.command(name="ham", description="Search for a callsign.")
+async def ham(interaction: discord.Interaction, callsign: str):
+    url = f"https://callook.info/{callsign}/json"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            data = await resp.json()
+
+    # Check if the 'current' key exists in the data
+    if 'current' not in data:
+        await interaction.response.send_message(f"Callsign '{callsign}' not found.", ephemeral=True)
+        return
+
+    
+    embed = discord.Embed(title="🎙️ Callsign Information 🎙️", color=0xFFC0CB)
+    embed.add_field(name="Callsign", value=data['current']['callsign'], inline=False)
+    embed.add_field(name="Operator Class", value=data['current']['operClass'], inline=False)
+    embed.add_field(name="Name", value=data['name'], inline=False)
+    embed.add_field(name="Address", value=f"{data['address']['line1']}, {data['address']['line2']}", inline=False)
+    embed.add_field(name="Grant Date", value=data['otherInfo']['grantDate'], inline=False)
+    embed.add_field(name="Expiration Date", value=data['otherInfo']['expiryDate'], inline=False)
+    embed.add_field(name="Gridsquare", value=data['location']['gridsquare'], inline=False)
+
+    # Create a hyperlink to Google Maps using the coordinates
+    latitude = data['location']['latitude']
+    longitude = data['location']['longitude']
+    google_maps_url = f"http://maps.google.com/maps?q={latitude},{longitude}"
+    embed.add_field(name="Coordinates", value=f"[{latitude}, {longitude}]({google_maps_url})", inline=False)
+
+    embed.add_field(name="FCC Registration Number (FRN)", value=data['otherInfo']['frn'], inline=False)
+    embed.add_field(name="FCC URL", value=data['otherInfo']['ulsUrl'], inline=False)
+
+    await interaction.response.send_message(embed=embed)
 
 def run_discord_bot():
     try:
