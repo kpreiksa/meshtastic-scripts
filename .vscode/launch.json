@@ -8,9 +8,9 @@
             "name": "Py: Bot Main",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/bot/main.py",
+            "program": "${workspaceFolder}/discord-bot/bot/main.py",
             "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/bot"
+            "cwd": "${workspaceFolder}/discord-bot/bot"
         }
     ]
 }
