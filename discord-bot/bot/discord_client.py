@@ -126,7 +126,7 @@ class DiscordBot(discord.Client):
             
             # modify the original message
             e = message.embeds[0]
-            e.color = discord.Color.red()
+            e.color = util.MeshBotColors.red()
             e.set_field_at(1, name='TX State', value='Error')
             e.add_field(name='Error Description', value=error_text, inline=False)
             await message.edit(embed=e)
