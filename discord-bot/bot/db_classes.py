@@ -92,6 +92,37 @@ class TXPacket(Base):
     discord_channel_id = Column(String)
     discord_message_id = Column(String)
     
+    def insert(sent_packet, discord_guild_id, discord_channel_id, discord_message_id, mesh_client, ack_requested=True):
+        channel = sent_packet.channel
+        hop_limit = sent_packet.hop_limit
+        packet_id = sent_packet.id
+        
+        # this should use a node obj?
+        dest = sent_packet.to
+        # KAP FIX
+        dest_id = mesh_client.get_node_id(nodenum=dest)
+        dest_shortname = mesh_client.get_short_name(dest_id)
+        dest_longname = mesh_client.get_long_name(dest_id)
+
+        db_pkt_obj = TXPacket(
+            publisher_mesh_node_num = mesh_client.my_node_info.node_num,
+            publisher_discord_bot_user_id = mesh_client.discord_client.user.id,
+            packet_id = packet_id,
+            channel=channel,
+            hop_limit=hop_limit,
+            dest=dest,
+            acknowledge_requested = ack_requested,
+            acknowledge_received = False,
+            dest_id = dest_id,
+            dest_shortname = dest_shortname,
+            dest_longname = dest_longname,
+            discord_guild_id = discord_guild_id,
+            discord_channel_id = discord_channel_id,
+            discord_message_id = discord_message_id
+        )
+        mesh_client._db_session.add(db_pkt_obj)
+        mesh_client._db_session.commit()
+    
 class MeshNodeDB(Base):
     __tablename__ = 'nodes'
     

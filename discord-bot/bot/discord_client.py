@@ -43,9 +43,94 @@ class DiscordBot(discord.Client):
 
     def enqueue_msg(self, msg):
         self._discordqueue.put(msg)
+        
+    def enqueue_ack(self, discord_message_id, ack_by_id, response_rx_rssi, response_rx_snr, response_hop_start, response_hop_limit):
+        self._enqueue_mesh_response({
+            'msg_type': 'ACK',
+            'discord_message_id': discord_message_id,
+            'response_from_id': ack_by_id,
+            'response_rx_rssi': response_rx_rssi,
+            'response_rx_snr': response_rx_snr,
+            'response_hop_start': response_hop_start,
+            'response_hop_limit': response_hop_limit,
+        })
+        
+    def enqueue_tx_error(self, discord_message_id, error_text):
+        self._enqueue_mesh_response({
+            'msg_type': 'TX_ERROR',
+            'discord_message_id': discord_message_id,
+            'error_text': error_text,
+        })
+        
+    def enqueue_tx_confirmation(self, discord_message_id):
+        self._enqueue_mesh_response({
+            'msg_type': 'TX_CONFIRMATION',
+            'discord_message_id': discord_message_id,
+        })
 
-    def enqueue_mesh_response(self, msg):
+    def _enqueue_mesh_response(self, msg):
         self._meshresponsequeue.put(msg)
+        
+    async def process_mesh_response(self, msg):
+        msg_type = msg.get('msg_type')
+        
+        if msg_type == 'ACK':
+            
+            logging.info(f'Admin message: ACK received')
+        
+            msg_id = msg.get('discord_message_id')
+            if msg_id is None:
+                logging.error('No discord_message_id found in mesh response (probably an ACK from self, on a message sent to a channel), skipping message update')
+                return
+            
+            ack_by_id = msg.get('response_from_id')
+
+            message = await self.channel.fetch_message(msg_id)
+            
+            ack_time_str = f'ACK Time: {util.get_current_time_str()}'
+
+            e = message.embeds[0]
+            
+            e.set_field_at(1, name='TX State', value='Acknowledged')
+            e.add_field(name='ACK Info', value=f'{self.mesh_client.get_node_descriptive_string(node_id=ack_by_id)}\n{ack_time_str}', inline=False)
+            await message.edit(embed=e)
+            
+        elif msg_type == 'TX_CONFIRMATION':
+            
+            logging.info(f'Admin message: TX_CONFIRMATION received')
+            
+            msg_id = msg.get('discord_message_id')
+            if msg_id is None:
+                logging.error('No discord_message_id found in mesh response.')
+                return
+            
+            message = await self.channel.fetch_message(msg_id)
+            
+            # modify the original message
+            e = message.embeds[0]
+            e.set_field_at(1, name='TX State', value='Sent')
+            await message.edit(embed=e)
+            
+        elif msg_type == 'TX_ERROR':
+            
+            logging.info(f'Admin message: TX_ERROR received')
+            
+            msg_id = msg.get('discord_message_id')
+            if msg_id is None:
+                logging.error('No discord_message_id found in mesh response.')
+                return
+            
+            error_text = msg.get('error_text')
+            
+            message = await self.channel.fetch_message(msg_id)
+            
+            # modify the original message
+            e = message.embeds[0]
+            e.color = discord.Color.red()
+            e.set_field_at(1, name='TX State', value='Error')
+            e.add_field(name='Error Description', value=error_text, inline=False)
+            await message.edit(embed=e)
+            
 
     async def background_task(self):
         await self.wait_until_ready()
@@ -68,26 +153,7 @@ class DiscordBot(discord.Client):
 
             try:
                 meshresponse = self._meshresponsequeue.get_nowait()
-
-                msg_id = meshresponse.get('discord_message_id')
-                if msg_id is None:
-                    logging.error('No discord_message_id found in mesh response (probably an ACK from self, on a message sent to a channel), skipping message update')
-                    self._meshresponsequeue.task_done()
-                    continue
-                ack_by_id = meshresponse.get('response_from_id')
-                ack_by_shorname = meshresponse.get('response_from_shortname')
-                ack_by_longname = meshresponse.get('response_from_longname')
-
-                ack_time = meshresponse.get('response_rx_time')
-
-                ack_time_str = util.time_from_ts(ack_time)
-
-                message = await self.channel.fetch_message(msg_id)
-
-                e = message.embeds[0]
-                e.add_field(name='Acknowledged', value=f'{ack_by_id} | {ack_by_shorname} | {ack_by_longname}\n{ack_time_str}', inline=False)
-                await message.edit(embed=e)
-
+                await self.process_mesh_response(meshresponse)
                 self._meshresponsequeue.task_done()
             except queue.Empty:
                 pass
@@ -97,7 +163,7 @@ class DiscordBot(discord.Client):
             # process stuff on mesh side
             self.mesh_client.background_process()
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(0.5)
 
     @staticmethod
     def only_in_channel(allowed_channel_id: int): # must pass allowed_channel_id as argument becaues this is compiled at import time, and you cannot pass self in

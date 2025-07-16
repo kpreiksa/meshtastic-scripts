@@ -509,7 +509,7 @@ class MeshPacket():
 
     @property
     def from_descriptive(self):
-        return f'{self.from_id} | {self.from_shortname} | {self.from_shortname}'
+        return f'{self.from_id} | {self.from_shortname} | {self.from_longname}'
 
     @property
     def to_descriptive(self):

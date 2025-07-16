@@ -119,10 +119,19 @@ class MeshClient():
 
     def onMsgResponse(self, d):
         # if there is a request Id... look it up in the Db and acknowledge
+        
+        # TODO: Create a Node obj and use it here?
         response_from = d.get('from')
         response_to = d.get('to')
         response_from_id = d.get('fromId')
         response_to_id = d.get('toId')
+        response_from_shortname = self.get_short_name(response_from_id)
+        response_from_longname =  self.get_long_name(response_from_id)
+        response_to_shortname = self.get_short_name(response_to_id)
+        response_to_longname =  self.get_long_name(response_to_id)
+        
+        # TODO: Create a Packet obj and use it here?
+        
         response_id = d.get('id')
         response_rx_time = d.get('rxTime')
         response_rx_snr = d.get('rxSnr')
@@ -131,15 +140,13 @@ class MeshClient():
         response_hop_start = d.get('hopStart')
         request_id = d.get('decoded', {}).get('requestId')
         routing_error_reason = d.get('decoded', {}).get('routing', {}).get('errorReason')
-        response_from_shortname = self.get_short_name(response_from_id)
-        response_from_longname =  self.get_long_name(response_from_id)
-        response_to_shortname = self.get_short_name(response_to_id)
-        response_to_longname =  self.get_long_name(response_to_id)
 
         logging.info(f'Got Response to packet: {request_id} from {response_from_id}')
-        db_updated = False
+        
         matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=request_id).first()
-        if matching_packet: # if it exists
+        if matching_packet:
+            # if we find the packet in the db matching the request ID of the ACK... update it to say
+            # it is acknowledged
             if matching_packet.acknowledge_received == True:
                 logging.info(f'Packet already acknowledged')
             else:
@@ -160,54 +167,42 @@ class MeshClient():
                 matching_packet.response_hop_start = response_hop_start
                 matching_packet.response_routing_error_reason = routing_error_reason
                 self._db_session.commit() # save back to db
-                db_updated = True
-                # self.discord_client.enqueue_msg(f'https://discord.com/channels/{matching_packet.discord_guild_id}/{matching_packet.discord_channel_id}/{matching_packet.discord_message_id} Msg to {matching_packet.dest_id} | {matching_packet.dest_shortname} | {matching_packet.dest_longname} - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
-                self.discord_client.enqueue_mesh_response(
-                    {
-                        'discord_guild_id': matching_packet.discord_guild_id,
-                        'discord_channel_id': matching_packet.discord_channel_id,
-                        'discord_message_id': matching_packet.discord_message_id,
-                        'response_from': response_from,
-                        'response_from_id': response_from_id,
-                        'response_from_shortname': response_from_shortname,
-                        'response_from_longname': response_from_longname,
-                        'response_rx_time': response_rx_time,
-                        'response_to': response_to,
-                        'response_to_id': response_to_id,
-                        'response_to_shortname': response_to_shortname,
-                        'response_to_longname': response_to_longname,
-                        'response_rx_snr': response_rx_snr,
-                        'response_rx_rssi': response_rx_rssi,
-                        'response_hop_limit': response_hop_limit,
-                        'response_hop_start': response_hop_start,
-                    }
-                )
+                
+                # enqueue response to be sent back to discord
+                self.discord_client.enqueue_ack(matching_packet.discord_message_id, response_from_id, response_rx_rssi, response_rx_snr, response_hop_start, response_hop_limit)
         else:
             logging.error(f'No matching packet found for request_id: {request_id}.\n Maybe the packet isnt in the DB yet, and/or is this a self-ack?')
-            # self.discord_client.enqueue_msg(f'Msg to {response_from_id} |   - Acknowledged. Snr: {response_rx_snr}. Rssi: {response_rx_rssi}. DB Updated = {db_updated}')
 
 
     def __init__(self, db_session, config):
+        self.config = config
+        
+        # queue for incoming requests (e.g. from discord bot commands) to send things over the mesh
         self._meshqueue = queue.Queue(maxsize=20)
+        
+        # queue to perform admin actions involving the node
         self._adminqueue = queue.Queue(maxsize=20)
 
+        # sqlalchemy database session
         self._db_session = db_session
-
-        self.config = config
-
+        
+        # reference to discord client - used for sending responses to user
+        self.discord_client = None
+        
+        # meshtastic stuff
         self.iface = None
-
         self.nodes = {}
         self.myNodeInfo = None #TODO: switch this to use the node object created onConnectionMesh
         self.my_node_info = None
 
-        self.discord_client = None
-
+        
 
     def connect(self):
+        """Connect to meshtastic device and subscribe to events for processing."""
+        
         interface_info = self.config.interface_info
 
-        logging.info(f'Connecting with interface: {interface_info.interface_type}')
+        logging.info(f'Connecting with interface: {interface_info.connection_descriptor}')
 
         if interface_info.interface_type == 'serial':
             try:
@@ -239,11 +234,10 @@ class MeshClient():
         pub.subscribe(self.onConnectionMesh, "meshtastic.connection.established")
         pub.subscribe(self.onNodeUpdated, "meshtastic.node.updated")
 
-        # myinfo = self.iface.getMyUser()
-        #logging.info(f'Bot connected to Mesh node: {shortname} | {longname} with connection {interface_info.interface_type}')
-
     def link_discord(self, discord_client):
         self.discord_client = discord_client
+        
+    # TODO: remove these and use node objs everywhere
 
     def get_long_name(self, node_id, default = '?'):
         if node_id in self.nodes:
@@ -258,199 +252,53 @@ class MeshClient():
         elif node_id.lower() == '!ffffffff':
             return '^all'
         return default
+    
+    def get_node_descriptive_string(self, node_id=None, nodenum=None, shortname=None, default = '?'):
 
-    def get_node_info_from_id(self, node_id):
-        if not node_id.startswith('!'):
-            node_id = '!' + node_id
-        return self.nodes.get(node_id, {})
-
-    def get_node_info_from_num(self, node_num):
-        node_id = '!' + hex(node_num)[2:]
-        return self.get_node_info_from_id(self, node_id)
-
-    def get_node_id_from_num(self, node_num):
-        node_id = '!' + hex(node_num)[2:]
-        return node_id
-
-    def get_node_info_from_shortname(self, shortname):
-        nodes = [node_data for node_data in self.nodes.values() if node_data.get('user',{}).get('shortName',)==shortname]
-        if len(nodes) == 1:
-            return nodes[0]
+        if node_id:
+            if node_id in self.nodes:
+                return f'{node_id} | {self.get_short_name(node_id,default=default)} | {self.get_long_name(node_id, default=default)}'
         else:
-            logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
-            return len(nodes)
-
-    def get_node_info_from_longname(self, longname):
-        nodes = [node_data for node_data in self.nodes.values() if node_data.get('user',{}).get('longName',)==longname]
-        if len(nodes) == 1:
-            return nodes[0]
-        else:
-            logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
-            return len(nodes)
-
-    def enqueue_send_channel(self, channel, message):
-        self.enqueue_msg(
-            {
-                'msg_type': 'send_channel',
-                'channel': channel,
-                'message': message
-            }
-        )
-
-    def enqueue_send_nodenum(self, nodenum, message, guild_id, channel_id, discord_message_id):
-        self.enqueue_msg(
-            {
-                'msg_type': 'send_nodenum',
-                'nodenum': nodenum,
-                'message': message,
-                'guild_id': guild_id,
-                'channel_id': channel_id,
-                'discord_message_id': discord_message_id,
-            }
-        )
-
-    def enqueue_send_nodeid(self, nodeid, message, guild_id, channel_id, discord_message_id):
-        self.enqueue_msg(
-            {
-                'msg_type': 'send_nodeid',
-                'nodeid': nodeid,
-                'message': message,
-                'guild_id': guild_id,
-                'channel_id': channel_id,
-                'discord_message_id': discord_message_id,
-            }
-        )
-
-    def enqueue_send_shortname(self, shortname, message, guild_id, channel_id, discord_message_id):
-
-
-        self.enqueue_msg(
-            {
-                'msg_type': 'send_shortname',
-                'shortname': shortname,
-                'message': message,
-                'guild_id': guild_id,
-                'channel_id': channel_id,
-                'discord_message_id': discord_message_id,
-            }
-        )
-
-    def enqueue_active_nodes(self, active_time):
-        self.enqueue_admin_msg(
-            {
-                'msg_type': 'active_nodes',
-                'active_time': active_time
-            }
-        )
-
-    def enqueue_all_nodes(self):
-        self.enqueue_admin_msg(
-            {
-                'msg_type': 'all_nodes',
-            }
-        )
-
-    def enqueue_msg(self, msg):
-        self._meshqueue.put(msg)
-
-    def enqueue_admin_msg(self, msg):
-        self._adminqueue.put(msg)
-
-    def insert_tx_packet_to_db(self, sent_packet, discord_guild_id, discord_channel_id, discord_message_id, ack_requested=True):
-
-        channel = sent_packet.channel
-        hop_limit = sent_packet.hop_limit
-        packet_id = sent_packet.id
-        dest = sent_packet.to
-        dest_id = self.get_node_id_from_num(dest)
-        dest_shortname = self.get_short_name(dest_id)
-        dest_longname = self.get_long_name(dest_id)
-
-        db_pkt_obj = TXPacket(
-            publisher_mesh_node_num = self.my_node_info.node_num,
-            publisher_discord_bot_user_id = self.discord_client.user.id,
-            packet_id = packet_id,
-            channel=channel,
-            hop_limit=hop_limit,
-            dest=dest,
-            acknowledge_requested = ack_requested,
-            acknowledge_received = False,
-            dest_id = dest_id,
-            dest_shortname = dest_shortname,
-            dest_longname = dest_longname,
-            discord_guild_id = discord_guild_id,
-            discord_channel_id = discord_channel_id,
-            discord_message_id = discord_message_id
-        )
-        self._db_session.add(db_pkt_obj)
-        self._db_session.commit()
-
-    def process_queue_message(self, msg):
-        if isinstance(msg, dict):
-            msg_type = msg.get('msg_type')
-            if msg_type == 'send_channel':
-                channel = msg.get('channel')
-                message = msg.get('message')
-                discord_guild_id = msg.get('guild_id')
-                discord_channel_id = msg.get('channel_id')
-                discord_message_id = msg.get('discord_message_id')
-                logging.info(f'Sending message to channel: {channel}')
-                sent_packet = self.iface.sendText(message, channelIndex=channel, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
-                self.insert_tx_packet_to_db(sent_packet, discord_guild_id, discord_channel_id, discord_message_id)
-            elif msg_type == 'send_nodenum':
-                nodenum = msg.get('nodenum')
-                message = msg.get('message')
-                discord_guild_id = msg.get('guild_id')
-                discord_channel_id = msg.get('channel_id')
-                discord_message_id = msg.get('discord_message_id')
-                logging.info(f'Sending message to: {nodenum}')
-                sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
-                self.insert_tx_packet_to_db(sent_packet, discord_guild_id, discord_channel_id, discord_message_id)
-            elif msg_type == 'send_nodeid':
-                nodeid = msg.get('nodeid')
-                message = msg.get('message')
-                # strip ! off nodeid if present
-                if nodeid.startswith('!'):
-                    nodeid = nodeid[1:]
-                nodenum = int(nodeid, 16)
-                discord_guild_id = msg.get('guild_id')
-                discord_channel_id = msg.get('channel_id')
-                discord_message_id = msg.get('discord_message_id')
-                logging.info(f'Sending message to: {nodenum}')
-                sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
-                self.insert_tx_packet_to_db(sent_packet, discord_guild_id, discord_channel_id, discord_message_id)
-            elif msg_type == 'send_shortname':
-                shortname = msg.get('shortname')
-                message = msg.get('message')
-                node_info = self.get_node_info_from_shortname(shortname)
-                nodenum = node_info.get('num')
-                discord_guild_id = msg.get('guild_id')
-                discord_channel_id = msg.get('channel_id')
-                discord_message_id = msg.get('discord_message_id')
-                logging.info(f'Sending message to: {nodenum}')
-                sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
-                self.insert_tx_packet_to_db(sent_packet, discord_guild_id, discord_channel_id, discord_message_id)
-        else:
-            logging.error(f'Unknown message type in mesh queue: {type(msg)}')
-            logging.error(f'Message content: {msg}')
-
-    def process_admin_queue_message(self, msg):
-        if isinstance(msg, dict):
-            msg_type = msg.get('msg_type')
-            if msg_type == 'active_nodes':
-                active_time = msg.get('active_time')
-                chunks = self.get_active_nodes(active_time)
-                if self.discord_client:
-                    for chunk in chunks:
-                        self.discord_client.enqueue_msg(chunk)
-            elif msg_type == 'all_nodes':
-                chunks = self.get_all_nodes()
-                if self.discord_client:
-                    for chunk in chunks:
-                        self.discord_client.enqueue_msg(chunk)
+            node_id = self.get_node_id(node_id=node_id, nodenum=nodenum, shortname=shortname)
+            return self.get_node_descriptive_string(node_id=node_id)
+        
+        return default
+    
+    def get_node_info(self, node_id=None, nodenum=None, shortname=None, longname=None):
+        if node_id:
+            if not node_id.startswith('!'):
+                node_id = '!' + node_id
+            return self.nodes.get(node_id, {})
+        if nodenum:
+            node_id = '!' + hex(nodenum)[2:]
+            return self.get_node_info(node_id=node_id)
+        
+        if shortname:
+            nodes = [node_data for node_data in self.nodes.values() if node_data.get('user',{}).get('shortName',)==shortname]
+            if len(nodes) == 1:
+                return nodes[0]
             else:
-                pass
-
+                logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
+                return None
+            
+        if longname:
+            nodes = [node_data for node_data in self.nodes.values() if node_data.get('user',{}).get('longName',)==longname]
+            if len(nodes) == 1:
+                return nodes[0]
+            else:
+                logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
+                return None
+        
+    def get_node_id(self, node_id=None, nodenum=None, shortname=None, longname=None):
+        node = self.get_node_info(node_id=node_id, nodenum=nodenum, shortname=shortname, longname=longname)
+        return node.get('user', {}).get('id')
+    
+    def get_node_num(self, node_id=None, nodenum=None, shortname=None, longname=None):
+        node = self.get_node_info(node_id=node_id, nodenum=nodenum, shortname=shortname, longname=longname)
+        return node.get('num')
+        
+    # admin tasks
+        
     def get_active_nodes(self, time_limit=15):
 
         logging.info(f'get_active_nodes has been called with: {time_limit} mins')
@@ -569,6 +417,215 @@ class MeshClient():
             )
             if self.discord_client:
                 self.discord_client.enqueue_msg(embed)
+
+        
+    # methods to ensure we enqueue the proper type of command/message
+
+    def enqueue_send_channel(self, channel, message):
+        """
+        Puts a message on the queue to be sent on the specified channel.
+
+        Args:
+            channel: Channel Index to send the message on.
+            message: Message text to send.
+        """
+        
+        self._enqueue_msg(
+            {
+                'msg_type': 'send_channel',
+                'channel': channel,
+                'message': message
+            }
+        )
+
+    def enqueue_send_nodenum(self, nodenum, message, guild_id, channel_id, discord_message_id):
+        """
+        Puts a message on the queue to be sent to a specific node (DM) by node number.
+
+        Args:
+            nodenum: Node to DM.
+            message: Message text to send.
+            guild_id: Guild ID of Discord server hosting the bot.
+            channel_id: Channel ID the message was sent on.
+            discord_message_id: Message ID of the command message.
+        """
+        
+        self._enqueue_msg(
+            {
+                'msg_type': 'send_nodenum',
+                'nodenum': nodenum,
+                'message': message,
+                'guild_id': guild_id,
+                'channel_id': channel_id,
+                'discord_message_id': discord_message_id,
+            }
+        )
+
+    def enqueue_send_nodeid(self, nodeid, message, guild_id, channel_id, discord_message_id):
+        """
+        Puts a message on the queue to be sent to a specific node (DM) by ID.
+
+        Args:
+            nodeid: Node to DM.
+            message: Message text to send.
+            guild_id: Guild ID of Discord server hosting the bot.
+            channel_id: Channel ID the message was sent on.
+            discord_message_id: Message ID of the command message.
+        """
+        
+        self._enqueue_msg(
+            {
+                'msg_type': 'send_nodeid',
+                'nodeid': nodeid,
+                'message': message,
+                'guild_id': guild_id,
+                'channel_id': channel_id,
+                'discord_message_id': discord_message_id,
+            }
+        )
+
+    def enqueue_send_shortname(self, shortname, message, guild_id, channel_id, discord_message_id):
+        """
+        Puts a message on the queue to be sent to a specific node (DM) by short name.
+
+        Args:
+            nodeid: Node to DM.
+            message: Message text to send.
+            guild_id: Guild ID of Discord server hosting the bot.
+            channel_id: Channel ID the message was sent on.
+            discord_message_id: Message ID of the command message.
+        """
+
+
+        self._enqueue_msg(
+            {
+                'msg_type': 'send_shortname',
+                'shortname': shortname,
+                'message': message,
+                'guild_id': guild_id,
+                'channel_id': channel_id,
+                'discord_message_id': discord_message_id,
+            }
+        )
+
+    def enqueue_active_nodes(self, active_time, method='node_db'):
+        """
+        Requests the active nodes.
+
+        Args:
+            active_time: Time to look back to find active nodes.
+            method: Method used to calculate (node_db, db)
+        """
+        
+        self._enqueue_admin_msg(
+            {
+                'msg_type': 'active_nodes',
+                'active_time': active_time,
+                'method': method,
+            }
+        )
+
+    def enqueue_all_nodes(self, method='node_db'):
+        """
+        Requests all nodes in node db.
+        
+        Args:
+            method: Method used to calculate (node_db, db)
+            
+        """
+        self._enqueue_admin_msg(
+            {
+                'msg_type': 'all_nodes',
+                'method': method,
+            }
+        )
+
+    def _enqueue_msg(self, msg):
+        """
+        Puts a message on the queue for processing.
+        
+        Args:
+            msg: Command message
+            
+        """
+        self._meshqueue.put(msg)
+
+    def _enqueue_admin_msg(self, msg):
+        """
+        Puts a message on the queue for processing.
+        
+        Args:
+            msg: Command message
+            
+        """
+        self._adminqueue.put(msg)
+
+    def _send_channel(self, channel, message, discord_guild_id=None, discord_channel_id=None, discord_message_id=None):
+        logging.info(f'Sending message to channel: {channel}')
+        sent_packet = self.iface.sendText(message, channelIndex=channel, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
+        TXPacket.insert(sent_packet=sent_packet, discord_guild_id=discord_guild_id, discord_channel_id=discord_channel_id, discord_message_id=discord_message_id, mesh_client=self)
+    
+    def _send_dm(self, nodenum, message, discord_guild_id=None, discord_channel_id=None, discord_message_id=None):
+        logging.info(f'Sending message to: {nodenum}')
+        sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
+        if sent_packet:
+            self.discord_client.enqueue_tx_confirmation(discord_message_id)
+            TXPacket.insert(sent_packet=sent_packet, discord_guild_id=discord_guild_id, discord_channel_id=discord_channel_id, discord_message_id=discord_message_id, mesh_client=self)
+    
+    # queue processing
+
+    def process_queue_message(self, msg):
+        if isinstance(msg, dict):
+            msg_type = msg.get('msg_type')
+            message = msg.get('message')
+            discord_guild_id = msg.get('guild_id')
+            discord_channel_id = msg.get('channel_id')
+            discord_message_id = msg.get('discord_message_id')
+            
+            if msg_type == 'send_channel':
+                channel = msg.get('channel')
+                self._send_channel(channel, message, discord_guild_id, discord_channel_id, discord_message_id)
+
+            elif msg_type == 'send_nodenum':
+                nodenum = msg.get('nodenum')
+                self._send_dm(nodenum, message, discord_guild_id, discord_channel_id, discord_message_id)
+            elif msg_type == 'send_nodeid':
+                nodeid = msg.get('nodeid')
+                nodenum = self.get_node_num(node_id=nodeid)
+                if not nodenum:
+                    self.discord_client.enqueue_tx_error(discord_message_id, f'Node ID: {nodeid} not found.')
+                    return
+                # TODO: If we did not get a nodenum back... respond to the original message with a 
+                # descriptive error
+                self._send_dm(nodenum, message, discord_guild_id, discord_channel_id, discord_message_id)
+            elif msg_type == 'send_shortname':
+                shortname = msg.get('shortname')
+                nodenum = self.get_node_num(shortname=shortname)
+                # TODO: If we did not get a nodenum back... respond to the original message with a 
+                # descriptive error
+                self._send_dm(nodenum, message, discord_guild_id, discord_channel_id, discord_message_id)
+        else:
+            logging.error(f'Unknown message type in mesh queue: {type(msg)}')
+            logging.error(f'Message content: {msg}')
+
+    def process_admin_queue_message(self, msg):
+        if isinstance(msg, dict):
+            msg_type = msg.get('msg_type')
+            if msg_type == 'active_nodes':
+                active_time = msg.get('active_time')
+                method = msg.get('method') #TODO: Implement different way or getting active nodes
+                chunks = self.get_active_nodes(active_time)
+                if self.discord_client:
+                    for chunk in chunks:
+                        self.discord_client.enqueue_msg(chunk)
+            elif msg_type == 'all_nodes':
+                method = msg.get('method') #TODO: Implement different way or getting all nodes
+                chunks = self.get_all_nodes()
+                if self.discord_client:
+                    for chunk in chunks:
+                        self.discord_client.enqueue_msg(chunk)
+            else:
+                pass
 
     def background_process(self):
 

@@ -8,7 +8,20 @@ class Config():
     class InterfaceInfo():
         def __init__(self, d):
             self._d = d
+            
+        def __repr__(self):
+            return f'<class {self.__class__.__name__} {self.connection_descriptor}>.'
 
+        @property
+        def connection_descriptor(self):
+            if self.interface_type == 'serial':
+                return f'{self.interface_type}'
+            elif self.interface_type == 'tcp':
+                return f'{self.interface_type} Address:{self.interface_address} Port:{self.interface_port}'
+            elif self.interface_type == 'ble':
+                return f'{self.interface_type} Node:{self.interface_ble_node}'
+            
+        
         @property
         def interface_type(self):
             return self._d.get('method', 'serial')
