@@ -45,6 +45,8 @@ class MeshClient():
                 # logging.info(f"Packet: {packet}") # Print the entire packet for debugging.
 
                 mesh_channel_index = packetObj.channel
+                if mesh_channel_index is None:
+                    mesh_channel_index = 0
                 mesh_channel_name = self.config.channel_names.get(mesh_channel_index, f"Unknown Channel ({mesh_channel_index})")
 
                 current_time = get_current_time_str()
