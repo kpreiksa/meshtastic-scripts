@@ -20,17 +20,16 @@ from discord_client import DiscordBot
 from util import get_current_time_str
 from util import MeshBotColors
 
-# env var params - ie from docker
-IS_DOCKER = os.environ.get('IS_DOCKER')
 # other params?
 log_file = 'meshtastic-discord-bot.log'
-if IS_DOCKER:
-    log_dir = 'config'
-else:
-    log_dir = '.'
-    
+
+# env var params - ie from docker, default is discord-bot/logs or discord-bot/db
+log_dir = os.environ.get('LOG_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)),'logs'))
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
+db_dir = os.environ.get('DB_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)),'db'))
+if not os.path.exists(db_dir):
+    os.makedirs(db_dir)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,8 +51,7 @@ class HelpView(View):
         self.add_item(Button(label="Meshmap", style=ButtonStyle.link, url="https://meshmap.net"))
         self.add_item(Button(label="Python Meshtastic Docs", style=ButtonStyle.link, url="https://python.meshtastic.org/index.html"))
 
-
-engine = create_engine(f'sqlite:///{log_dir}/example.db')
+engine = create_engine(f'sqlite:///{db_dir}/example.db')
 db_base.Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -271,7 +269,7 @@ async def ham(interaction: discord.Interaction, callsign: str):
         await interaction.response.send_message(f"Callsign '{callsign}' not found.", ephemeral=True)
         return
 
-    
+
     embed = discord.Embed(title="🎙️ Callsign Information 🎙️", color=0xFFC0CB)
     embed.add_field(name="Callsign", value=data['current']['callsign'], inline=False)
     embed.add_field(name="Operator Class", value=data['current']['operClass'], inline=False)
@@ -299,10 +297,10 @@ async def get_node_map(interaction: discord.Interaction, node_name: str, map_zoo
     
     node = mesh_client.get_node_info(shortname=node_name)
     current_time = get_current_time_str()
-    
+
     if not config.gmaps_api_key:
         embed = discord.Embed(title=f"Error: This command requires a google maps API key in config.json.", color=MeshBotColors.red())
-        
+
     if node:
         # get the lat/long
         if isinstance(node, dict) and 'position' in node:
@@ -310,16 +308,16 @@ async def get_node_map(interaction: discord.Interaction, node_name: str, map_zoo
             embed.add_field(name='Lat/Lon', value=f'{lat},{lon}')
             pos_data = node['position']
             lat = pos_data.get('latitude')
-            lon = pos_data.get('longitude')            
+            lon = pos_data.get('longitude')
             url = f'https://maps.googleapis.com/maps/api/staticmap?center={lat},{lon}&zoom={map_zoom_level}&size=400x400&key={config.gmaps_api_key}&markers=color:green|label:{node_name}|{lat},{lon}'
             embed.set_image(url=url)
         else:
             embed = discord.Embed(title=f"Location data unavailable for Node: {node_name}.", color=MeshBotColors.red())
-                
+
     else:
         embed = discord.Embed(title=f"Error: Node with shotname {node_name} not found.", color=MeshBotColors.red())
-        
-        
+
+
     embed.set_footer(text=f"{current_time}")
 
     await interaction.response.send_message(embed=embed)

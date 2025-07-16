@@ -114,7 +114,6 @@ class Config():
             'discord_bot_token': DISCORD_BOT_TOKEN,
             'discord_channel_id': DISCORD_CHANNEL_ID,
             'time_zone': TIME_ZONE,
-            'is_docker': os.environ.get('IS_DOCKER'),
             'channel_names':
             {
                 0: CHANNEL_0
@@ -163,10 +162,6 @@ class Config():
     @property
     def time_zone(self):
         return self._config.get('time_zone')
-
-    @property
-    def is_docker(self):
-        return os.environ.get('IS_DOCKER')
 
     @property
     def channel_names(self):
