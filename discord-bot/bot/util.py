@@ -12,8 +12,10 @@ class MeshBotColors():
         'green': 0x67ea94,
         'red': discord.Color.red(),
         'peach': 0xEA9467,
+        'yellow': 0xFFCB61,
         'violet': 0x9467EA,
-        'magenta': 0xEA67AD
+        'magenta': 0xEA67AD,
+        'blue': 0x77BEF0
     }
 
     @classmethod
@@ -46,12 +48,20 @@ class MeshBotColors():
 
     @classmethod
     def RX(cls):
-        return cls._item_dict['green']
+        return cls._item_dict['blue']
 
     @classmethod
     def error(cls):
         return cls._item_dict['red']
-
+    
     @classmethod
-    def TX(cls):
+    def TX_PENDING(cls):
         return cls._item_dict['peach']
+    
+    @classmethod
+    def TX_SENT(cls):
+        return cls._item_dict['yellow']
+    
+    @classmethod
+    def TX_ACK(cls):
+        return cls._item_dict['green']

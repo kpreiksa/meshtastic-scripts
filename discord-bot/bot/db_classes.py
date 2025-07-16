@@ -1,5 +1,7 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, Double
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, Double, ForeignKey
 from db_base import Base
+
+from sqlalchemy.orm import relationship
 
 # 3. Define the DBPacket 
 class DBPacket(Base):
@@ -73,24 +75,12 @@ class TXPacket(Base):
     dest_longname = Column(String)
     acknowledge_requested = Column(Boolean)
     acknowledge_received = Column(Boolean)
-    response_from = Column(Integer)
-    response_from_id = Column(String)
-    response_from_shortname = Column(String)
-    response_from_longname = Column(String)
-    response_to = Column(Integer)
-    response_to_id = Column(String)
-    response_to_shortname = Column(String)
-    response_to_longname = Column(String)
-    response_packet_id = Column(Integer)
-    response_rx_time = Column(Integer)
-    response_rx_snr = Column(Double)
-    response_rx_rssi = Column(Double)
-    response_hop_limit = Column(Integer)
-    response_hop_start = Column(Integer)
-    response_routing_error_reason = Column(String)
+
     discord_guild_id = Column(String)
     discord_channel_id = Column(String)
     discord_message_id = Column(String)
+    
+    acks = relationship("TXACK", back_populates="tx_packet")
     
     def insert(sent_packet, discord_guild_id, discord_channel_id, discord_message_id, mesh_client, ack_requested=True):
         channel = sent_packet.channel
@@ -196,5 +186,34 @@ class MeshNodeDB(Base):
             device_metrics_air_utilization_tx = d.get('deviceMetrics', {}).get('airUtilTx'),
             device_metrics_uptime_seconds = d.get('deviceMetrics', {}).get('uptimeSeconds'),
         )
+        
+
+class TXACK(Base):
+    __tablename__ = 'tx_acks'  # Name of the table in the database
+    id = Column(Integer, primary_key=True)
+    
+    publisher_mesh_node_num = Column(String)
+    publisher_discord_bot_user_id = Column(String) # it is a big integer...
+    
+    tx_packet_id = Column(Integer, ForeignKey('tx_packets.id'))
+
+    tx_packet = relationship("TXPacket", back_populates="acks") # Defines the many-to-one relationship with 'User'
+    
+    response_from = Column(Integer)
+    response_from_id = Column(String)
+    response_from_shortname = Column(String)
+    response_from_longname = Column(String)
+    response_to = Column(Integer)
+    response_to_id = Column(String)
+    response_to_shortname = Column(String)
+    response_to_longname = Column(String)
+    response_packet_id = Column(Integer)
+    response_rx_time = Column(Integer)
+    response_rx_snr = Column(Double)
+    response_rx_rssi = Column(Double)
+    response_hop_limit = Column(Integer)
+    response_hop_start = Column(Integer)
+    response_routing_error_reason = Column(String)
+    implicit_ack = Column(Boolean)
     
 

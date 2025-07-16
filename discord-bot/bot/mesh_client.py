@@ -20,7 +20,7 @@ from config_classes import Config
 from util import get_current_time_str
 from util import MeshBotColors
 
-from db_classes import TXPacket, MeshNodeDB
+from db_classes import TXPacket, MeshNodeDB, TXACK
 
 # move all of this to config
 battery_warning = 15 # move to config
@@ -74,6 +74,49 @@ class MeshClient():
                 logging.info(f'Putting Mesh Received message on Discord queue')
                 if self.discord_client:
                     self.discord_client.enqueue_msg(embed)
+            elif packetObj.portnum == 'ROUTING_APP':
+                if packetObj.priority == 'ACK':
+                    if packetObj.decoded.request_id:
+
+                        logging.info(f'Got ACK from {packetObj.from_descriptive}. Request ID: {packetObj.decoded.request_id}')
+                        
+                        matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=packetObj.decoded.request_id).first()
+                        if matching_packet:
+                            # if we find the packet in the db matching the request ID of the ACK... update it to say
+                            # it is acknowledged
+
+                            matching_packet.acknowledge_received = True
+                            implicit_ack = packetObj.from_id == self.my_node_info.user_info.user_id
+                            
+                            ack_obj = TXACK(
+                                response_from = packetObj.from_num,
+                                response_from_id = packetObj.from_id,
+                                response_from_shortname = packetObj.from_shortname,
+                                response_from_longname = packetObj.from_longname,
+                                response_to = packetObj.to_num,
+                                response_to_id = packetObj.to_id,
+                                response_to_shortname = packetObj.to_shortname,
+                                response_to_longname = packetObj.to_longname,
+                                response_packet_id = packetObj.packet_id,
+                                response_rx_time = packetObj.rxTime,
+                                response_rx_snr = packetObj.rx_snr,
+                                response_rx_rssi = packetObj.rx_rssi,
+                                response_hop_limit = packetObj.hop_limit,
+                                response_hop_start = packetObj.hop_start,
+                                response_routing_error_reason = packetObj.decoded.routing.error_reason,
+                                implicit_ack = implicit_ack
+                                
+                            )
+                            
+                            self._db_session.add(ack_obj)
+                            matching_packet.acks.append(ack_obj)
+
+                            self._db_session.commit() # save back to db
+                            
+                            #enqueue response to be sent back to discord
+                            self.discord_client.enqueue_ack(matching_packet.discord_message_id, packetObj.from_id, packetObj.rx_rssi, packetObj.rx_snr, packetObj.hop_start, packetObj.hop_limit, is_implicit=implicit_ack)
+                        else:
+                            logging.error(f'No matching packet found for request_id: {packetObj.decoded.request_id}.\n Maybe the packet isnt in the DB yet, and/or is this a self-ack?')
             else:
                 logging.info(f'Received unhandled packet type: {packetObj.portnum}')
 
@@ -141,35 +184,41 @@ class MeshClient():
         request_id = d.get('decoded', {}).get('requestId')
         routing_error_reason = d.get('decoded', {}).get('routing', {}).get('errorReason')
 
-        logging.info(f'Got Response to packet: {request_id} from {response_from_id}')
+        logging.info(f'Got Response to packet: {request_id} from {response_from_id} ({response_from_shortname})')
         
         matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=request_id).first()
         if matching_packet:
             # if we find the packet in the db matching the request ID of the ACK... update it to say
             # it is acknowledged
-            if matching_packet.acknowledge_received == True:
-                logging.info(f'Packet already acknowledged')
-            else:
-                matching_packet.acknowledge_received = True
-                matching_packet.response_from = response_from
-                matching_packet.response_from_id = response_from_id
-                matching_packet.response_from_shortname = response_from_shortname
-                matching_packet.response_from_longname = response_from_longname
-                matching_packet.response_to = response_to
-                matching_packet.response_to_id = response_to_id
-                matching_packet.response_to_shortname = response_to_shortname
-                matching_packet.response_to_longname = response_to_longname
-                matching_packet.response_packet_id = response_id
-                matching_packet.response_rx_time = response_rx_time
-                matching_packet.response_rx_snr = response_rx_snr
-                matching_packet.response_rx_rssi = response_rx_rssi
-                matching_packet.response_hop_limit = response_hop_limit
-                matching_packet.response_hop_start = response_hop_start
-                matching_packet.response_routing_error_reason = routing_error_reason
-                self._db_session.commit() # save back to db
+            matching_packet.acknowledge_received = True
+            
+            implicit_ack = response_from_id == self.my_node_info.user_info.user_id
+            
+            ack_obj = TXACK(
+                response_from = response_from,
+                response_from_id = response_from_id,
+                response_from_shortname = response_from_shortname,
+                response_from_longname = response_from_longname,
+                response_to = response_to,
+                response_to_id = response_to_id,
+                response_to_shortname = response_to_shortname,
+                response_to_longname = response_to_longname,
+                response_packet_id = response_id,
+                response_rx_time = response_rx_time,
+                response_rx_snr = response_rx_snr,
+                response_rx_rssi = response_rx_rssi,
+                response_hop_limit = response_hop_limit,
+                response_hop_start = response_hop_start,
+                response_routing_error_reason = routing_error_reason,
+                implicit_ack = implicit_ack,
                 
-                # enqueue response to be sent back to discord
-                self.discord_client.enqueue_ack(matching_packet.discord_message_id, response_from_id, response_rx_rssi, response_rx_snr, response_hop_start, response_hop_limit)
+            )
+            self._db_session.add(ack_obj)
+            matching_packet.acks.append(ack_obj)
+            self._db_session.commit() # save back to db
+            
+            # enqueue response to be sent back to discord
+            self.discord_client.enqueue_ack(matching_packet.discord_message_id, response_from_id, response_rx_rssi, response_rx_snr, response_hop_start, response_hop_limit, is_implicit=implicit_ack)
         else:
             logging.error(f'No matching packet found for request_id: {request_id}.\n Maybe the packet isnt in the DB yet, and/or is this a self-ack?')
 
@@ -290,12 +339,28 @@ class MeshClient():
                 return None
         
     def get_node_id(self, node_id=None, nodenum=None, shortname=None, longname=None):
-        node = self.get_node_info(node_id=node_id, nodenum=nodenum, shortname=shortname, longname=longname)
-        return node.get('user', {}).get('id')
+        if node_id:
+            return node_id
+        elif nodenum:
+            node_id = '!' + hex(nodenum)[2:]
+            return node_id
+        else:
+            node = self.get_node_info(shortname=shortname, longname=longname)
+            return node.get('user', {}).get('id')
     
     def get_node_num(self, node_id=None, nodenum=None, shortname=None, longname=None):
-        node = self.get_node_info(node_id=node_id, nodenum=nodenum, shortname=shortname, longname=longname)
-        return node.get('num')
+        
+        if nodenum:
+            return nodenum
+        
+        elif node_id:
+            if node_id.startswith('!'):
+                node_id = node_id.strip('!')
+                nodenum = int(node_id, 16)
+                return nodenum
+        else:
+            node = self.get_node_info(shortname=shortname, longname=longname)
+            return node.get('num')
         
     # admin tasks
         
@@ -421,7 +486,7 @@ class MeshClient():
         
     # methods to ensure we enqueue the proper type of command/message
 
-    def enqueue_send_channel(self, channel, message):
+    def enqueue_send_channel(self, channel, message, guild_id, channel_id, discord_message_id):
         """
         Puts a message on the queue to be sent on the specified channel.
 
@@ -434,7 +499,10 @@ class MeshClient():
             {
                 'msg_type': 'send_channel',
                 'channel': channel,
-                'message': message
+                'message': message,
+                'guild_id': guild_id,
+                'channel_id': channel_id,
+                'discord_message_id': discord_message_id,
             }
         )
 
@@ -562,7 +630,9 @@ class MeshClient():
 
     def _send_channel(self, channel, message, discord_guild_id=None, discord_channel_id=None, discord_message_id=None):
         logging.info(f'Sending message to channel: {channel}')
-        sent_packet = self.iface.sendText(message, channelIndex=channel, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
+        sent_packet = self.iface.sendText(message, channelIndex=channel, wantResponse=True, wantAck=True)
+        if sent_packet:
+            self.discord_client.enqueue_tx_confirmation(discord_message_id)
         TXPacket.insert(sent_packet=sent_packet, discord_guild_id=discord_guild_id, discord_channel_id=discord_channel_id, discord_message_id=discord_message_id, mesh_client=self)
     
     def _send_dm(self, nodenum, message, discord_guild_id=None, discord_channel_id=None, discord_message_id=None):

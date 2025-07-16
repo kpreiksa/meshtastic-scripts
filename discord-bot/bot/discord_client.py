@@ -44,7 +44,7 @@ class DiscordBot(discord.Client):
     def enqueue_msg(self, msg):
         self._discordqueue.put(msg)
         
-    def enqueue_ack(self, discord_message_id, ack_by_id, response_rx_rssi, response_rx_snr, response_hop_start, response_hop_limit):
+    def enqueue_ack(self, discord_message_id, ack_by_id, response_rx_rssi, response_rx_snr, response_hop_start, response_hop_limit, is_implicit):
         self._enqueue_mesh_response({
             'msg_type': 'ACK',
             'discord_message_id': discord_message_id,
@@ -53,6 +53,7 @@ class DiscordBot(discord.Client):
             'response_rx_snr': response_rx_snr,
             'response_hop_start': response_hop_start,
             'response_hop_limit': response_hop_limit,
+            'is_implicit': is_implicit,
         })
         
     def enqueue_tx_error(self, discord_message_id, error_text):
@@ -76,7 +77,7 @@ class DiscordBot(discord.Client):
         
         if msg_type == 'ACK':
             
-            logging.info(f'Admin message: ACK received')
+            logging.info(f'Response message: ACK received')
         
             msg_id = msg.get('discord_message_id')
             if msg_id is None:
@@ -88,16 +89,22 @@ class DiscordBot(discord.Client):
             message = await self.channel.fetch_message(msg_id)
             
             ack_time_str = f'ACK Time: {util.get_current_time_str()}'
+            
+            is_implicit = msg.get('is_implicit', True)
+            
+            ack_text = 'Acknowledged (Implicit)' if is_implicit else 'Acknowledged (Explicit)'
+            
+            ack_text_2 = 'Implicit ACK' if is_implicit else f'Explicit ACK by {self.mesh_client.get_node_descriptive_string(node_id=ack_by_id)}'
 
             e = message.embeds[0]
-            
-            e.set_field_at(1, name='TX State', value='Acknowledged')
-            e.add_field(name='ACK Info', value=f'{self.mesh_client.get_node_descriptive_string(node_id=ack_by_id)}\n{ack_time_str}', inline=False)
+            e.color = util.MeshBotColors.TX_ACK()
+            e.set_field_at(1, name='TX State', value=ack_text)
+            e.add_field(name='ACK Info', value=f'{ack_text_2}\n{ack_time_str}', inline=False)
             await message.edit(embed=e)
             
         elif msg_type == 'TX_CONFIRMATION':
             
-            logging.info(f'Admin message: TX_CONFIRMATION received')
+            logging.info(f'Response message: TX_CONFIRMATION received')
             
             msg_id = msg.get('discord_message_id')
             if msg_id is None:
@@ -108,12 +115,13 @@ class DiscordBot(discord.Client):
             
             # modify the original message
             e = message.embeds[0]
+            e.color = util.MeshBotColors.TX_SENT()
             e.set_field_at(1, name='TX State', value='Sent')
             await message.edit(embed=e)
             
         elif msg_type == 'TX_ERROR':
             
-            logging.info(f'Admin message: TX_ERROR received')
+            logging.info(f'Response message: TX_ERROR received')
             
             msg_id = msg.get('discord_message_id')
             if msg_id is None:
@@ -126,7 +134,7 @@ class DiscordBot(discord.Client):
             
             # modify the original message
             e = message.embeds[0]
-            e.color = util.MeshBotColors.red()
+            e.color = util.MeshBotColors.error()
             e.set_field_at(1, name='TX State', value='Error')
             e.add_field(name='Error Description', value=error_text, inline=False)
             await message.edit(embed=e)

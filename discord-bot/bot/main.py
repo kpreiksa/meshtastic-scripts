@@ -97,7 +97,7 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
         current_time = get_current_time_str()
 
         # craft message
-        embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX())
+        embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
         embed.add_field(name="To Node:", value=mesh_client.get_node_descriptive_string(node_id=nodeid), inline=True)  # Add '!' in front of nodeid
         embed.add_field(name='TX State', value='Pending')
         embed.set_footer(text=f"{current_time}")
@@ -123,7 +123,7 @@ async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
     
     # craft message
     current_time = get_current_time_str()
-    embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX())
+    embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
     embed.add_field(name="To Node:", value=f'{mesh_client.get_node_descriptive_string(nodenum=nodenum)}', inline=True)
     embed.add_field(name='TX State', value='Pending')
     embed.set_footer(text=f"{current_time}")
@@ -145,13 +145,13 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
     
     # craft message
     
-    embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX())
+    embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
     try:
         node_descriptor = mesh_client.get_node_descriptive_string(shortname=node_name)
         embed.add_field(name="To Node:", value=f'{mesh_client.get_node_descriptive_string(shortname=node_name)}', inline=True)
         embed.add_field(name='TX State', value='Pending')
     except:
-        embed.color = MeshBotColors.red()
+        embed.color = MeshBotColors.error()
         embed.add_field(name="To Node:", value='?', inline=True)
         embed.add_field(name='TX State', value='Error')
         embed.add_field(name='Error Description', value=f'Node with short name: {node_name} not found.', inline=False)
@@ -178,11 +178,17 @@ for mesh_channel_index, mesh_channel_name in config.channel_names.items():
         logging.info(f'/{mesh_channel_name} command received. Sending message: {message}')
         current_time = get_current_time_str()
 
-        embed = discord.Embed(title=f"Sending Message to {config.channel_names[mesh_channel_index]}:", description=message, color=MeshBotColors.TX())
+        embed = discord.Embed(title=f"Sending Message", description=message, color=MeshBotColors.TX_PENDING())
+        embed.add_field(name="To Channel:", value=config.channel_names[mesh_channel_index], inline=True)
+        embed.add_field(name='TX State', value='Pending')
         embed.set_footer(text=f"{current_time}")
 
-        await interaction.response.send_message(embed=embed)
-        mesh_client.enqueue_send_channel(mesh_channel_index, message)
+        out = await interaction.response.send_message(embed=embed)
+        discord_message_id = out.message_id
+        channel_id = interaction.channel_id
+        guild_id = interaction.guild_id
+    
+        mesh_client.enqueue_send_channel(mesh_channel_index, message, guild_id=guild_id, channel_id=channel_id, discord_message_id=discord_message_id)
 
 
 @discord_client.tree.command(name="active", description="Lists all active nodes.")
