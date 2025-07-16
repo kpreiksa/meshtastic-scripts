@@ -91,6 +91,8 @@ class MeshClient():
                             implicit_ack = packetObj.from_id == self.my_node_info.user_info.user_id
                             
                             ack_obj = TXACK(
+                                publisher_mesh_node_num = self.my_node_info.node_num,
+                                publisher_discord_bot_user_id = self.discord_client.user.id,
                                 response_from = packetObj.from_num,
                                 response_from_id = packetObj.from_id,
                                 response_from_shortname = packetObj.from_shortname,
@@ -197,6 +199,8 @@ class MeshClient():
             implicit_ack = response_from_id == self.my_node_info.user_info.user_id
             
             ack_obj = TXACK(
+                publisher_mesh_node_num = self.my_node_info.node_num,
+                publisher_discord_bot_user_id = self.discord_client.user.id,
                 response_from = response_from,
                 response_from_id = response_from_id,
                 response_from_shortname = response_from_shortname,
