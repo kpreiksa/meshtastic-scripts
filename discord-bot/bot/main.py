@@ -20,14 +20,12 @@ from discord_client import DiscordBot
 from util import get_current_time_str
 from util import MeshBotColors
 
-# env var params - ie from docker
-IS_DOCKER = os.environ.get('IS_DOCKER')
 # other params?
 log_file = 'meshtastic-discord-bot.log'
-if IS_DOCKER:
-    log_dir = 'config'
-else:
-    log_dir = '.'
+
+# env var params - ie from docker, default is discord-bot/logs or discord-bot/db
+log_dir = os.environ.get('LOG_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)),'logs'))
+db_dir = os.environ.get('DB_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)),'db'))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,9 +47,9 @@ class HelpView(View):
         self.add_item(Button(label="Meshmap", style=ButtonStyle.link, url="https://meshmap.net"))
         self.add_item(Button(label="Python Meshtastic Docs", style=ButtonStyle.link, url="https://python.meshtastic.org/index.html"))
 
-if not os.path.exists(log_dir):
-    os.makedirs(log_dir)
-engine = create_engine(f'sqlite:///{log_dir}/example.db')
+if not os.path.exists(db_dir):
+    os.makedirs(db_dir)
+engine = create_engine(f'sqlite:///{db_dir}/example.db')
 db_base.Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
