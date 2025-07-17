@@ -18,7 +18,7 @@ from config_classes import Config
 from mesh_client import MeshClient
 from discord_client import DiscordBot
 from util import get_current_time_str
-from util import MeshBotColors
+from util import MeshBotColors, DiscordInteractionInfo
 
 # other params?
 log_file = 'meshtastic-discord-bot.log'
@@ -75,7 +75,9 @@ async def help_command(interaction: discord.Interaction):
                 "`/active` - Shows all active nodes. Default is 61\n"
                 "`/all_nodes` - Shows all nodes. WARNING: Potentially a lot of messages\n"
                 "`/help` - Shows this help message.\n"
-                "`/debug` - Shows information this bot's mesh node\n")
+                "`/debug` - Shows information this bot's mesh node\n"
+                "`/ham` - Look up callsign for ham operator\n"
+                "`/map` - Shows map with marker for specific node\n")
 
     # Dynamically add channel commands based on mesh_channel_names
     for mesh_channel_index, channel_name in config.channel_names.items():
@@ -98,17 +100,15 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
 
         # craft message
         embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
-        embed.add_field(name="To Node:", value=mesh_client.get_node_descriptive_string(node_id=nodeid), inline=True)  # Add '!' in front of nodeid
-        embed.add_field(name='TX State', value='Pending')
+        embed.add_field(name="To Node:", value=mesh_client.get_node_descriptive_string(node_id=nodeid), inline=False)  # Add '!' in front of nodeid
+        embed.add_field(name='TX State', value='Pending', inline=False)
         embed.set_footer(text=f"{current_time}")
 
         # send message
         out = await interaction.response.send_message(embed=embed, ephemeral=False)
-        discord_message_id = out.message_id
-        channel_id = interaction.channel_id
-        guild_id = interaction.guild_id
+        discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
 
-        mesh_client.enqueue_send_nodeid(nodeid, message, guild_id, channel_id, discord_message_id)
+        mesh_client.enqueue_send_nodeid(nodeid, message, discord_interaction_info)
 
     except ValueError as e:
         error_embed = discord.Embed(title="Error", description="Invalid hexadecimal node ID.", color=MeshBotColors.error())
@@ -124,16 +124,14 @@ async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
     # craft message
     current_time = get_current_time_str()
     embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
-    embed.add_field(name="To Node:", value=f'{mesh_client.get_node_descriptive_string(nodenum=nodenum)}', inline=True)
-    embed.add_field(name='TX State', value='Pending')
+    embed.add_field(name="To Node:", value=f'{mesh_client.get_node_descriptive_string(nodenum=nodenum)}', inline=False)
+    embed.add_field(name='TX State', value='Pending', inline=False)
     embed.set_footer(text=f"{current_time}")
     # send message
     out = await interaction.response.send_message(embed=embed)
-    discord_message_id = out.message_id
-    channel_id = interaction.channel_id
-    guild_id = interaction.guild_id
+    discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
 
-    mesh_client.enqueue_send_nodenum(nodenum, message, guild_id, channel_id, discord_message_id)
+    mesh_client.enqueue_send_nodenum(nodenum, message, discord_interaction_info)
 
 
 @discord_client.tree.command(name="send_shortname", description="Send a message to a specific node.")
@@ -148,12 +146,12 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
     embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
     try:
         node_descriptor = mesh_client.get_node_descriptive_string(shortname=node_name)
-        embed.add_field(name="To Node:", value=f'{mesh_client.get_node_descriptive_string(shortname=node_name)}', inline=True)
-        embed.add_field(name='TX State', value='Pending')
+        embed.add_field(name="To Node:", value=f'{mesh_client.get_node_descriptive_string(shortname=node_name)}', inline=False)
+        embed.add_field(name='TX State', value='Pending', inline=False)
     except:
         embed.color = MeshBotColors.error()
-        embed.add_field(name="To Node:", value='?', inline=True)
-        embed.add_field(name='TX State', value='Error')
+        embed.add_field(name="To Node:", value='?', inline=False)
+        embed.add_field(name='TX State', value='Error', inline=False)
         embed.add_field(name='Error Description', value=f'Node with short name: {node_name} not found.', inline=False)
         
     embed.set_footer(text=f"{current_time}")
@@ -161,14 +159,8 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
     out = await interaction.response.send_message(embed=embed)
     
     # queue message to be sent on mesh
-    discord_message_id = out.message_id
-    channel_id = interaction.channel_id
-    guild_id = interaction.guild_id
-    mesh_client.enqueue_send_shortname(node_name, message, guild_id, channel_id, discord_message_id)
-
-    # embed = discord.Embed(title="Could not send message", description=f'Unable to find node with short name: {node_name}.\nMessage not sent.')
-    # embed = discord.Embed(title="Could not send message", description=f'Found too many nodes named {node_name}. Nodes found: {node}.\nMessage not sent.')
-    # embed = discord.Embed(title="Could not send message", description=f"Unknown error, couldn't send the message")
+    discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
+    mesh_client.enqueue_send_shortname(node_name, message, discord_interaction_info)
 
 # Dynamically create commands based on mesh_channel_names
 for mesh_channel_index, mesh_channel_name in config.channel_names.items():
@@ -179,17 +171,26 @@ for mesh_channel_index, mesh_channel_name in config.channel_names.items():
         current_time = get_current_time_str()
 
         embed = discord.Embed(title=f"Sending Message", description=message, color=MeshBotColors.TX_PENDING())
-        embed.add_field(name="To Channel:", value=config.channel_names[mesh_channel_index], inline=True)
-        embed.add_field(name='TX State', value='Pending')
+        embed.add_field(name="To Channel:", value=config.channel_names[mesh_channel_index], inline=False)
+        embed.add_field(name='TX State', value='Pending', inline=False)
         embed.set_footer(text=f"{current_time}")
 
         out = await interaction.response.send_message(embed=embed)
-        discord_message_id = out.message_id
-        channel_id = interaction.channel_id
-        guild_id = interaction.guild_id
-    
-        mesh_client.enqueue_send_channel(mesh_channel_index, message, guild_id=guild_id, channel_id=channel_id, discord_message_id=discord_message_id)
+        
+        discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
+        mesh_client.enqueue_send_channel(mesh_channel_index, message, discord_interaction_info=discord_interaction_info)
 
+
+@discord_client.tree.command(name="traceroute", description="Traceroute a node.")
+@discord_client.only_in_channel(discord_client.dis_channel_id)
+async def run_traceroute(interaction: discord.Interaction, node_id: str):
+    await interaction.response.defer()
+
+    logging.info(f'/traceroute received.')
+    mesh_client.enqueue_traceroute(node_id)
+    await asyncio.sleep(0.1)
+
+    await interaction.delete_original_response()
 
 @discord_client.tree.command(name="active", description="Lists all active nodes.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
@@ -201,6 +202,18 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
     await asyncio.sleep(0.1)
 
     await interaction.delete_original_response()
+    
+@discord_client.tree.command(name="self", description="Lists info about directly connected node.")
+@discord_client.only_in_channel(discord_client.dis_channel_id)
+async def describe_self(interaction: discord.Interaction):
+    logging.info(f'/self received.')
+    node_id = mesh_client.my_node_info.user_info.user_id
+    short_name = mesh_client.my_node_info.user_info.short_name
+    long_name = mesh_client.my_node_info.user_info.long_name
+    
+    embed = discord.Embed(title='Local Node Information', description=f'**Node ID:** {node_id}\n**Short Name:** {short_name}\n**Long Name:** {long_name}\n')
+    await interaction.response.send_message(embed=embed)
+
 
 @discord_client.tree.command(name="all_nodes", description="Lists all nodes.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)

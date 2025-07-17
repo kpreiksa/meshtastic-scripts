@@ -3,27 +3,26 @@ from db_base import Base
 
 from sqlalchemy.orm import relationship
 
-# 3. Define the DBPacket 
-class DBPacket(Base):
-    __tablename__ = 'packets'  # Name of the table in the database
+class RXPacket(Base):
+    __tablename__ = 'rx_packets'  # Name of the table in the database
     id = Column(Integer, primary_key=True)
     
     publisher_mesh_node_num = Column(String)
     publisher_discord_bot_user_id = Column(String) # it is a big integer...
     
     channel = Column(Integer)
-    from_id = Column(String)
-    to_id = Column(String)
-    from_shortname = Column(String)
-    to_shortname = Column(String)
-    from_longname = Column(String)
-    to_longname = Column(String)
+    src_id = Column(String)
+    src_short_name = Column(String)
+    src_long_name = Column(String)
+    dst_id = Column(String)
+    dst_short_name = Column(String)
+    dst_long_name = Column(String)
     hop_limit = Column(Integer)
     hop_start = Column(Integer)
     pki_encrypted = Column(Boolean)
     portnum = Column(String)
     priority = Column(String)
-    rxTime = Column(Integer) # epoch
+    rx_time = Column(Integer) # epoch
     rx_rssi = Column(Double)
     rx_snr = Column(Double)
     to_all = Column(Boolean)
@@ -58,7 +57,146 @@ class DBPacket(Base):
     request_id = Column(String) # maybe int?
     error_reason = Column(String)
     
+    @property
+    def is_text_message(self):
+        return self.portnum == 'TEXT_MESSAGE_APP'
     
+    @property
+    def src_descriptive(self):
+        return f'{self.src_id} | {self.src_short_name} | {self.src_long_name}'
+    
+    @property
+    def dst_descriptive(self):
+        return f'{self.dst_id} | {self.dst_short_name} | {self.dst_long_name}'
+    
+    @property
+    def rx_snr_str(self):
+        if self.rx_snr:
+            return f'{self.rx_snr} dB'
+        else:
+            return '?'
+
+    @property
+    def rx_rssi_str(self):
+        if self.rx_rssi:
+            return f'{self.rx_rssi} dB'
+        else:
+            return '?'
+    
+    def from_dict(d:dict, mesh_client):
+        
+        # metadata (discord)
+        publisher_mesh_node_num = mesh_client.my_node_info.node_num
+        publisher_discord_bot_user_id = mesh_client.discord_client.user.id
+        
+        # COMMON SECTION
+        channel = d.get('channel')
+        src_id = d.get('fromId')
+        src_short_name = mesh_client.get_short_name(src_id)
+        src_long_name = mesh_client.get_long_name(src_id)
+        
+        dst_id = d.get('toId')
+        dst_short_name = mesh_client.get_short_name(dst_id)
+        dst_long_name = mesh_client.get_long_name(dst_id)
+        
+        to_all = dst_id == '!ffffffff'
+        
+        hop_limit = d.get('hopLimit')
+        hop_start = d.get('hopStart')
+        pki_encrypted = d.get('pkiEncrypted')
+        priority = d.get('priority')
+        
+        portnum = d.get('decoded', {}).get('portnum')
+        
+        rx_rssi = d.get('rxRssi')
+        rx_snr = d.get('rxSnr')
+        rx_time = d.get('rxTime')
+        
+        want_ack = d.get('wantAck')
+        want_reponse = d.get('wantResponse')
+        
+        # TEXT_MESSAGE_APP
+        text = d.get('decoded', {}).get('text') if portnum == 'TEXT_MESSAGE_APP' else None
+        
+        # POSITION_APP
+        pos_data = d.get('decoded', {}).get('position', {}) if portnum == 'POSITION_APP' else {}
+        altitude = pos_data.get('altitude')
+        latitude = pos_data.get('latitude')
+        longitude = pos_data.get('longitude')
+        latitudeI = pos_data.get('latitudeI')
+        longitudeI = pos_data.get('longitudeI')
+        
+        # TELEMETRY_APP
+        telemetry_data = d.get('decoded', {}).get('telemetry', {}) if portnum == 'TELEMETRY_APP' else {}
+        # check for various types of telemetry
+        
+        device_metrics = telemetry_data.get('device_metrics', {})
+        
+        air_util_tx = device_metrics.get('airUtilTx')
+        battery_level = device_metrics.get('batteryLevel')
+        channel_utilization = device_metrics.get('channelUtilization')
+        uptime_seconds = device_metrics.get('uptimeSeconds')
+        voltage = device_metrics.get('voltage')
+        
+        # NODEINFO_APP
+        nodeinfo_data = d.get('decoded', {}).get('user', {}) if portnum == 'NODEINFO_APP' else {}
+        
+        node_id = nodeinfo_data.get('id')
+        node_short_name = nodeinfo_data.get('shortName')
+        node_long_name = nodeinfo_data.get('longName')
+        mac_address = nodeinfo_data.get('macaddr')
+        hw_model = nodeinfo_data.get('hwModel')
+        public_key = nodeinfo_data.get('publicKey')
+        
+        # ROUTING_APP
+        request_id = d.get('decoded', {}).get('requestId') if portnum == 'ROUTING_APP' else None
+        error_reason = d.get('decoded', {}).get('routing').get('errorReason') if portnum == 'ROUTING_APP' else None
+        
+        out = RXPacket(
+            
+            publisher_mesh_node_num = publisher_mesh_node_num,
+            publisher_discord_bot_user_id = publisher_discord_bot_user_id,
+            
+            channel = channel,
+            src_id = src_id,
+            src_short_name = src_short_name,
+            src_long_name = src_long_name,
+            dst_id = dst_id,
+            dst_short_name = src_short_name,
+            dst_long_name = src_long_name,
+            hop_limit = hop_limit,
+            hop_start = hop_start,
+            pki_encrypted = pki_encrypted,
+            portnum = portnum,
+            priority = priority,
+            rx_time = rx_time,
+            rx_rssi = rx_rssi,
+            rx_snr = rx_snr,
+            to_all = to_all,
+            want_ack = want_ack,
+            text = text,
+            air_util_tx = air_util_tx,
+            battery_level = battery_level,
+            channel_utilization = channel_utilization,
+            uptime_seconds = uptime_seconds,
+            voltage = voltage,
+            altitude = altitude,
+            latitude = latitude,
+            latitudeI = latitudeI,
+            longitude = longitude,
+            longitudeI = longitudeI,
+            node_id = node_id,
+            node_short_name = node_short_name,
+            node_long_name = node_long_name,
+            mac_address = mac_address,
+            hw_model = hw_model,
+            public_key = public_key,
+            request_id = request_id,
+            error_reason = error_reason
+            
+        )
+        return out
+        
 class TXPacket(Base):
     __tablename__ = 'tx_packets'  # Name of the table in the database
     id = Column(Integer, primary_key=True)
@@ -80,9 +218,9 @@ class TXPacket(Base):
     discord_channel_id = Column(String)
     discord_message_id = Column(String)
     
-    acks = relationship("TXACK", back_populates="tx_packet")
+    acks = relationship("ACK", back_populates="tx_packet")
     
-    def insert(sent_packet, discord_guild_id, discord_channel_id, discord_message_id, mesh_client, ack_requested=True):
+    def from_sent_packet(sent_packet, discord_interaction_info, mesh_client, ack_requested=True):
         channel = sent_packet.channel
         hop_limit = sent_packet.hop_limit
         packet_id = sent_packet.id
@@ -106,13 +244,42 @@ class TXPacket(Base):
             dest_id = dest_id,
             dest_shortname = dest_shortname,
             dest_longname = dest_longname,
-            discord_guild_id = discord_guild_id,
-            discord_channel_id = discord_channel_id,
-            discord_message_id = discord_message_id
+            discord_guild_id = discord_interaction_info.guild_id,
+            discord_channel_id = discord_interaction_info.channel_id,
+            discord_message_id = discord_interaction_info.message_id
         )
-        mesh_client._db_session.add(db_pkt_obj)
-        mesh_client._db_session.commit()
+        return db_pkt_obj
+        
+
+class ACK(Base):
+    __tablename__ = 'acks'  # Name of the table in the database
+    id = Column(Integer, primary_key=True)
     
+    publisher_mesh_node_num = Column(String)
+    publisher_discord_bot_user_id = Column(String) # it is a big integer...
+    
+    tx_packet_id = Column(Integer, ForeignKey('tx_packets.id'))
+    tx_packet = relationship("TXPacket", back_populates="acks") # Defines the many-to-one relationship with 'User'
+    
+    ack_packet_id = Column(Integer, ForeignKey('rx_packets.id'))
+    ack_packet = relationship("RXPacket") # Defines the many-to-one relationship with 'User'
+    
+    implicit_ack = Column(Boolean)
+    
+    def from_rx_packet(pkt, mesh_client):
+        
+        implicit_ack = pkt.src_id == mesh_client.my_node_info.user_info.user_id
+        
+        ack_obj = ACK(
+            publisher_mesh_node_num = mesh_client.my_node_info.node_num,
+            publisher_discord_bot_user_id = mesh_client.discord_client.user.id,
+            ack_packet = pkt,
+            implicit_ack = implicit_ack  
+        )
+        return ack_obj
+    
+
+# TODO: Refactor this so it can be used for everything node-related - with the possible exception of the local node
 class MeshNodeDB(Base):
     __tablename__ = 'nodes'
     
@@ -188,32 +355,4 @@ class MeshNodeDB(Base):
         )
         
 
-class TXACK(Base):
-    __tablename__ = 'tx_acks'  # Name of the table in the database
-    id = Column(Integer, primary_key=True)
-    
-    publisher_mesh_node_num = Column(String)
-    publisher_discord_bot_user_id = Column(String) # it is a big integer...
-    
-    tx_packet_id = Column(Integer, ForeignKey('tx_packets.id'))
-
-    tx_packet = relationship("TXPacket", back_populates="acks") # Defines the many-to-one relationship with 'User'
-    
-    response_from = Column(Integer)
-    response_from_id = Column(String)
-    response_from_shortname = Column(String)
-    response_from_longname = Column(String)
-    response_to = Column(Integer)
-    response_to_id = Column(String)
-    response_to_shortname = Column(String)
-    response_to_longname = Column(String)
-    response_packet_id = Column(Integer)
-    response_rx_time = Column(Integer)
-    response_rx_snr = Column(Double)
-    response_rx_rssi = Column(Double)
-    response_hop_limit = Column(Integer)
-    response_hop_start = Column(Integer)
-    response_routing_error_reason = Column(String)
-    implicit_ack = Column(Boolean)
-    
 

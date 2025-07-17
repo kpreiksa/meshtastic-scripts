@@ -1,6 +1,27 @@
 from datetime import datetime
 import discord
 
+class DiscordInteractionInfo():
+    """
+    Everything needed to uniquely identify a message for purposes of responding to it
+    """
+    def __init__(self, guild_id, channel_id, message_id):
+        self._guild_id = guild_id
+        self._channel_id = channel_id
+        self._message_id = message_id
+        
+    @property
+    def guild_id(self):
+        return self._guild_id
+    
+    @property
+    def channel_id(self):
+        return self._channel_id
+    
+    @property
+    def message_id(self):
+        return self._message_id
+
 def get_current_time_str():
     return datetime.now().strftime('%d %B %Y %I:%M:%S %p')
 

@@ -56,6 +56,52 @@ class DiscordBot(discord.Client):
             'is_implicit': is_implicit,
         })
         
+    def enqueue_mesh_text_msg_received(self, packet):
+        
+        mesh_channel_index = packet.channel
+        if mesh_channel_index is None:
+            mesh_channel_index = 0
+        mesh_channel_name = self.config.channel_names.get(mesh_channel_index, f"Unknown Channel ({mesh_channel_index})")
+
+        current_time = util.get_current_time_str()
+
+        hop_start = packet.hop_start
+
+        if packet.hop_limit and packet.hop_start:
+            hops = int(packet.hop_limit) - int(packet.hop_limit)
+        else:
+            hops = "?"
+            if not packet.hop_limit:
+                hop_start = "?"
+        
+        embed = discord.Embed(title="Message Received", description=packet.decoded.text, color=util.MeshBotColors.RX())
+        embed.add_field(name="From Node", value=packet.from_descriptive, inline=False)
+        embed.add_field(name="RxSNR / RxRSSI", value=f"{packet.rx_snr_str} / {packet.rx_rssi_str}", inline=True)
+        embed.add_field(name="Hops", value=f"{hops} / {hop_start}", inline=True)
+        embed.set_footer(text=f"{current_time}")
+
+        if packet.to_all:
+            embed.add_field(name="To Channel", value=mesh_channel_name, inline=True)
+        else:
+            embed.add_field(name="To Node", value=packet.dst_descriptive, inline=True)
+
+        logging.info(f'Putting Mesh Received message on Discord queue')
+        self.enqueue_msg(embed)
+
+    def enqueue_mesh_ready(self, node_descriptor, modem_preset):
+        embed = discord.Embed(title="Mesh Ready", description=f'Subscribed to mesh.', color=util.MeshBotColors.green())
+        embed.add_field(name='Host Node', value=node_descriptor, inline=False)
+        embed.add_field(name='LoRa Preset', value=modem_preset)
+        current_time = util.get_current_time_str()
+        embed.set_footer(text=f"{current_time}")
+        self.enqueue_msg(embed)
+               
+    def enqueue_lost_comm(self, exception_obj):
+        embed = discord.Embed(title="Lost Comm", description=f'Lost Comm: {str(exception_obj)}', color=util.MeshBotColors.error())
+        current_time = util.get_current_time_str()
+        embed.set_footer(text=f"{current_time}")
+        self.enqueue_msg(embed)
+        
     def enqueue_tx_error(self, discord_message_id, error_text):
         self._enqueue_mesh_response({
             'msg_type': 'TX_ERROR',
