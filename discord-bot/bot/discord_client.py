@@ -6,8 +6,6 @@ from functools import wraps
 import discord
 from discord import app_commands
 
-from config_classes import Config
-
 import util
 
 class DiscordBot(discord.Client):
@@ -95,7 +93,15 @@ class DiscordBot(discord.Client):
         current_time = util.get_current_time_str()
         embed.set_footer(text=f"{current_time}")
         self.enqueue_msg(embed)
-               
+
+    def enqueue_battery_low_alert(self, text):
+        embed = discord.Embed(
+            title='Node Battery Low!',
+            description=text,
+            color=util.MeshBotColors.error()
+        )
+        self.enqueue_msg(embed)
+                            
     def enqueue_lost_comm(self, exception_obj):
         embed = discord.Embed(title="Lost Comm", description=f'Lost Comm: {str(exception_obj)}', color=util.MeshBotColors.error())
         current_time = util.get_current_time_str()
@@ -140,12 +146,31 @@ class DiscordBot(discord.Client):
             
             ack_text = 'Acknowledged (Implicit)' if is_implicit else 'Acknowledged (Explicit)'
             
-            ack_text_2 = 'Implicit ACK' if is_implicit else f'Explicit ACK by {self.mesh_client.get_node_descriptive_string(node_id=ack_by_id)}'
+            rx_rssi = msg.get('response_rx_rssi')
+            rx_snr = msg.get('response_rx_snr')
+            signal_metrics_available = rx_rssi is not None and rx_snr is not None
+            hop_start = msg.get('response_hop_start')
+            hop_limit = msg.get('response_hop_limit')
+            
+            ack_text_2 = []
+            
+            
+            if is_implicit:
+                ack_text_2.append('**ACK Type:**: Implicit')
+            else:
+                ack_text_2.append('**ACK Type:**: Explicit')
+                ack_text_2.append(f'**Node:**: {self.mesh_client.get_node_descriptive_string(node_id=ack_by_id)}')
+            
+            if signal_metrics_available:
+                ack_text_2.append(f'**RSSI/SNR:** {rx_rssi}/{rx_snr}')
+                
+            ack_text_2.append(f'**Hop Start/Limit:** {hop_start}/{hop_limit}')
+                
 
             e = message.embeds[0]
             e.color = util.MeshBotColors.TX_ACK()
             e.set_field_at(1, name='TX State', value=ack_text)
-            e.add_field(name='ACK Info', value=f'{ack_text_2}\n{ack_time_str}', inline=False)
+            e.add_field(name='ACK Info', value='\n'.join(ack_text_2), inline=False)
             await message.edit(embed=e)
             
         elif msg_type == 'TX_CONFIRMATION':
@@ -185,7 +210,6 @@ class DiscordBot(discord.Client):
             e.add_field(name='Error Description', value=error_text, inline=False)
             await message.edit(embed=e)
             
-
     async def background_task(self):
         await self.wait_until_ready()
         counter = 0

@@ -1,4 +1,3 @@
-import discord # needed for embeds
 from pprint import pprint
 import logging
 import queue
@@ -15,9 +14,6 @@ import pytz
 from pubsub import pub
 
 from mesh_node_classes import MeshNode
-from config_classes import Config
-from util import get_current_time_str
-from util import MeshBotColors
 
 from db_classes import TXPacket, RXPacket, ACK, MeshNodeDB
 
@@ -398,10 +394,11 @@ class MeshClient():
         # runs every minute, not eff but idk what else to do
 
         #TODO: use Node obj created in onConnectionMesh. Possibly make it auto-updating when accessed
-
-        shortname = self.myNodeInfo.get('user',{}).get('shortName','???')
-        longname = self.myNodeInfo.get('user',{}).get('longName','???')
+        
+        
         battery_level = self.myNodeInfo.get('deviceMetrics',{}).get('batteryLevel',100)
+        
+        self.my_node_info.device_metrics.battery_level
         if battery_level > (battery_warning + battery_level/2):
             self.battery_warning_sent = False
         elif self.battery_warning_sent is False and battery_level < battery_warning:
@@ -409,16 +406,12 @@ class MeshClient():
             self.battery_warning_sent = True
             # send message to discord
             text = (
-                f"**NodeName:** {shortname} | {longname}\n"
+                f"**NodeName:** {self.my_node_info.user_info.short_name} | {self.my_node_info.user_info.long_name}\n"
                 f"**Battery Level:** {battery_level}%"
             )
-            embed = discord.Embed(
-                title='Node Battery Low!',
-                description=text,
-                color=MeshBotColors.error()
-            )
-            if self.discord_client:
-                self.discord_client.enqueue_msg(embed)
+            
+            self.discord_client.enqueue_battery_low_alert(text)
+
 
         
     # methods to ensure we enqueue the proper type of command/message

@@ -207,11 +207,16 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def describe_self(interaction: discord.Interaction):
     logging.info(f'/self received.')
-    node_id = mesh_client.my_node_info.user_info.user_id
-    short_name = mesh_client.my_node_info.user_info.short_name
-    long_name = mesh_client.my_node_info.user_info.long_name
     
-    embed = discord.Embed(title='Local Node Information', description=f'**Node ID:** {node_id}\n**Short Name:** {short_name}\n**Long Name:** {long_name}\n')
+    text = [
+        f'**Node ID:** {mesh_client.my_node_info.user_info.user_id}',
+        f'**Short Name:** {mesh_client.my_node_info.user_info.short_name}',
+        f'**Long Name:** {mesh_client.my_node_info.user_info.long_name}',
+        f'**MAC Address:** {mesh_client.my_node_info.user_info.mac_address}',
+        f'**HW Model:** {mesh_client.my_node_info.user_info.hw_model}',
+    ]
+    
+    embed = discord.Embed(title='Local Node Information', description='\n'.join(text))
     await interaction.response.send_message(embed=embed)
 
 

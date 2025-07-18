@@ -71,7 +71,7 @@ class MeshNode():
         return NodePositionInfo(self._node_dict.get('position', {}))
     
     @property
-    def device_metricsw(self):
+    def device_metrics(self):
         return NodeDeviceMetrics(self._node_dict.get('deviceMetrics', {}))
         
     @property
