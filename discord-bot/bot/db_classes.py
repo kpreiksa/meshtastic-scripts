@@ -3,6 +3,8 @@ from db_base import Base
 
 from sqlalchemy.orm import relationship
 
+import meshtastic
+
 class RXPacket(Base):
     __tablename__ = 'rx_packets'  # Name of the table in the database
     id = Column(Integer, primary_key=True)
@@ -31,19 +33,78 @@ class RXPacket(Base):
     # text message
     text = Column(String)
     
+    # telemetry/air quality metrics
+    has_air_quality_metrics = Column(Boolean)
+    air_quality_co2 = Column(Double)
+    air_quality_particles_03um = Column(Double)
+    air_quality_particles_05um = Column(Double)
+    air_quality_particles_10um = Column(Double)
+    air_quality_particles_25um = Column(Double)
+    air_quality_particles_50um = Column(Double)
+    air_quality_particles_100um = Column(Double)
+    air_quality_pm10_environmental = Column(Double)
+    air_quality_pm10_standard = Column(Double)
+    air_quality_pm25_environmental = Column(Double)
+    air_quality_pm25_standard = Column(Double)
+    air_quality_pm100_environmental = Column(Double)
+    air_quality_pm100_standard = Column(Double)
+    
     # telemetry/device metrics
+    has_device_metrics = Column(Boolean)
     air_util_tx = Column(Double)
     battery_level = Column(Double)
     channel_utilization = Column(Double)
     uptime_seconds = Column(Double)
     voltage = Column(Double)
     
+    # telemetry/environment metrics
+    has_environment_metrics = Column(Boolean)
+    environment_barometric_pressure = Column(Double)
+    environment_current = Column(Double)
+    environment_distance = Column(Double)
+    environment_gas_resistance = Column(Double)
+    environment_iaq = Column(Double)
+    environment_ir_lux = Column(Double)
+    environment_lux = Column(Double)
+    environment_radiation = Column(Double)
+    environment_rainfall_1h = Column(Double)
+    environment_rainfall_24h = Column(Double)
+    environment_relative_humidity = Column(Double)
+    environment_soil_moisture = Column(Double)
+    environment_soil_temperature = Column(Double)
+    environment_temperature = Column(Double)
+    environment_uv_lux = Column(Double)
+    environment_voltage = Column(Double)
+    environment_weight = Column(Double)
+    environment_white_lux = Column(Double)
+    environment_wind_direction = Column(Double)
+    environment_wind_gust = Column(Double)
+    environment_wind_lull = Column(Double)
+    environment_wind_speed = Column(Double)
+    
+    # telemetry/power metrics
+    has_power_metrics = Column(Boolean)
+    power_ch1_current = Column(Double)
+    power_ch1_voltage = Column(Double)
+    power_ch2_current = Column(Double)
+    power_ch2_voltage = Column(Double)
+    power_ch3_current = Column(Double)
+    power_ch3_voltage = Column(Double)
+    
     # position
+    has_position_data = Column(Boolean)
     altitude = Column(Double)
     latitude = Column(Double)
     latitudeI = Column(Integer)
     longitude = Column(Double)
     longitudeI = Column(Integer)
+    pos_time = Column(Integer) #presumably GPS time?
+    location_source = Column(String)
+    pdop = Column(Double)
+    ground_speed = Column(Double)
+    ground_track = Column(Double)
+    sats_in_view = Column(Integer)
+    precision_bits = Column(Integer)
     
     # nodeinfo
     node_id = Column(String)
@@ -115,55 +176,260 @@ class RXPacket(Base):
         want_ack = d.get('wantAck')
         want_reponse = d.get('wantResponse')
         
-        # TEXT_MESSAGE_APP
-        text = d.get('decoded', {}).get('text') if portnum == 'TEXT_MESSAGE_APP' else None
+        decoded = d.get('decoded', {})
         
-        # POSITION_APP
-        pos_data = d.get('decoded', {}).get('position', {}) if portnum == 'POSITION_APP' else {}
-        altitude = pos_data.get('altitude')
-        latitude = pos_data.get('latitude')
-        longitude = pos_data.get('longitude')
-        latitudeI = pos_data.get('latitudeI')
-        longitudeI = pos_data.get('longitudeI')
+        if portnum == 'TEXT_MESSAGE_APP':
+            text = decoded.get('text')
+        else:
+            text = None
+            
+        has_position_data = False
+            
+        if portnum == 'POSITION_APP':
+            has_position_data = True
+            pos_data = decoded.get('position', {})
+            altitude = pos_data.get('altitude')
+            latitude = pos_data.get('latitude')
+            longitude = pos_data.get('longitude')
+            latitudeI = pos_data.get('latitudeI')
+            longitudeI = pos_data.get('longitudeI')
+            
+            pos_time = pos_data.get('time')
+            location_source = pos_data.get('locationSource')
+            pdop = pos_data.get('PDOP')
+            ground_speed = pos_data.get('groundSpeed')
+            ground_track = pos_data.get('groundTrack')
+            sats_in_view = pos_data.get('satsInView')
+            precision_bits = pos_data.get('precisionBits')
+        else:
+            altitude = None
+            latitude = None
+            longitude = None
+            latitudeI = None
+            longitudeI = None
+            
+            pos_time = None
+            location_source = None
+            pdop = None
+            ground_speed = None
+            ground_track = None
+            sats_in_view = None
+            precision_bits = None
+            
+        if portnum == 'TELEMETRY_APP':
+            telemetry_data = decoded.get('telemetry', {})
+            raw_pb = telemetry_data.get('raw')
+            
+            has_air_quality_metrics = 'airQualityMetrics' in telemetry_data
+            has_device_metrics = 'deviceMetrics' in telemetry_data
+            has_environment_metrics = 'environmentMetrics' in telemetry_data
+            has_power_metrics = 'powerMetrics' in telemetry_data
+            
+            if isinstance(raw_pb, meshtastic.protobuf.telemetry_pb2.Telemetry):
+                
+                air_util_tx = raw_pb.device_metrics.air_util_tx
+                battery_level = raw_pb.device_metrics.battery_level
+                channel_utilization = raw_pb.device_metrics.channel_utilization
+                uptime_seconds = raw_pb.device_metrics.uptime_seconds
+                voltage = raw_pb.device_metrics.voltage
+            
+                air_quality_co2 = raw_pb.air_quality_metrics.co2
+                air_quality_particles_03um = raw_pb.air_quality_metrics.particles_03um
+                air_quality_particles_05um = raw_pb.air_quality_metrics.particles_05um
+                air_quality_particles_10um = raw_pb.air_quality_metrics.particles_10um
+                air_quality_particles_25um = raw_pb.air_quality_metrics.particles_25um
+                air_quality_particles_50um = raw_pb.air_quality_metrics.particles_50um
+                air_quality_particles_100um = raw_pb.air_quality_metrics.particles_100um
+                air_quality_pm10_environmental = raw_pb.air_quality_metrics.pm10_environmental
+                air_quality_pm10_standard = raw_pb.air_quality_metrics.pm10_standard
+                air_quality_pm25_environmental = raw_pb.air_quality_metrics.pm25_environmental
+                air_quality_pm25_standard = raw_pb.air_quality_metrics.pm25_standard
+                air_quality_pm100_environmental = raw_pb.air_quality_metrics.pm100_environmental
+                air_quality_pm100_standard = raw_pb.air_quality_metrics.pm100_standard
+                
+                
+                # telemetry/environment metrics
+                environment_barometric_pressure = raw_pb.environment_metrics.barometric_pressure
+                environment_current = raw_pb.environment_metrics.current
+                environment_distance = raw_pb.environment_metrics.distance
+                environment_gas_resistance = raw_pb.environment_metrics.gas_resistance
+                environment_iaq = raw_pb.environment_metrics.iaq
+                environment_ir_lux = raw_pb.environment_metrics.ir_lux
+                environment_lux = raw_pb.environment_metrics.lux
+                environment_radiation = raw_pb.environment_metrics.radiation
+                environment_rainfall_1h = raw_pb.environment_metrics.rainfall_1h
+                environment_rainfall_24h = raw_pb.environment_metrics.rainfall_24h
+                environment_relative_humidity = raw_pb.environment_metrics.relative_humidity
+                environment_soil_moisture = raw_pb.environment_metrics.soil_moisture
+                environment_soil_temperature = raw_pb.environment_metrics.soil_temperature
+                environment_temperature = raw_pb.environment_metrics.temperature
+                environment_uv_lux = raw_pb.environment_metrics.uv_lux
+                environment_voltage = raw_pb.environment_metrics.voltage
+                environment_weight = raw_pb.environment_metrics.weight
+                environment_white_lux = raw_pb.environment_metrics.white_lux
+                environment_wind_direction = raw_pb.environment_metrics.wind_direction
+                environment_wind_gust = raw_pb.environment_metrics.wind_gust
+                environment_wind_lull = raw_pb.environment_metrics.wind_lull
+                environment_wind_speed = raw_pb.environment_metrics.wind_speed
+                
+                power_ch1_current = raw_pb.power_metrics.ch1_current
+                power_ch1_voltage = raw_pb.power_metrics.ch1_voltage
+                power_ch2_current = raw_pb.power_metrics.ch2_current
+                power_ch2_voltage = raw_pb.power_metrics.ch2_voltage
+                power_ch3_current = raw_pb.power_metrics.ch3_current
+                power_ch3_voltage = raw_pb.power_metrics.ch3_voltage
+                
+            else:
+                
+                air_util_tx = None
+                battery_level = None
+                channel_utilization = None
+                uptime_seconds = None
+                voltage = None
+                
+                air_quality_co2 = None
+                air_quality_particles_03um = None
+                air_quality_particles_05um = None
+                air_quality_particles_10um = None
+                air_quality_particles_25um = None
+                air_quality_particles_50um = None
+                air_quality_particles_100um = None
+                air_quality_pm10_environmental = None
+                air_quality_pm10_standard = None
+                air_quality_pm25_environmental = None
+                air_quality_pm25_standard = None
+                air_quality_pm100_environmental = None
+                air_quality_pm100_standard = None
+                
+                # telemetry/environment metrics
+                environment_barometric_pressure = None
+                environment_current = None
+                environment_distance = None
+                environment_gas_resistance = None
+                environment_iaq = None
+                environment_ir_lux = None
+                environment_lux = None
+                environment_radiation = None
+                environment_rainfall_1h = None
+                environment_rainfall_24h = None
+                environment_relative_humidity = None
+                environment_soil_moisture = None
+                environment_soil_temperature = None
+                environment_temperature = None
+                environment_uv_lux = None
+                environment_voltage = None
+                environment_weight = None
+                environment_white_lux = None
+                environment_wind_direction = None
+                environment_wind_gust = None
+                environment_wind_lull = None
+                environment_wind_speed = None
+                
+                power_ch1_current = None
+                power_ch1_voltage = None
+                power_ch2_current = None
+                power_ch2_voltage = None
+                power_ch3_current = None
+                power_ch3_voltage = None
+        else:
+            
+            has_air_quality_metrics = False
+            has_device_metrics = False
+            has_environment_metrics = False
+            has_power_metrics = False
+            
+            air_util_tx = None
+            battery_level = None
+            channel_utilization = None
+            uptime_seconds = None
+            voltage = None
+            
+            air_quality_co2 = None
+            air_quality_particles_03um = None
+            air_quality_particles_05um = None
+            air_quality_particles_10um = None
+            air_quality_particles_25um = None
+            air_quality_particles_50um = None
+            air_quality_particles_100um = None
+            air_quality_pm10_environmental = None
+            air_quality_pm10_standard = None
+            air_quality_pm25_environmental = None
+            air_quality_pm25_standard = None
+            air_quality_pm100_environmental = None
+            air_quality_pm100_standard = None
+            
+            # telemetry/environment metrics
+            environment_barometric_pressure = None
+            environment_current = None
+            environment_distance = None
+            environment_gas_resistance = None
+            environment_iaq = None
+            environment_ir_lux = None
+            environment_lux = None
+            environment_radiation = None
+            environment_rainfall_1h = None
+            environment_rainfall_24h = None
+            environment_relative_humidity = None
+            environment_soil_moisture = None
+            environment_soil_temperature = None
+            environment_temperature = None
+            environment_uv_lux = None
+            environment_voltage = None
+            environment_weight = None
+            environment_white_lux = None
+            environment_wind_direction = None
+            environment_wind_gust = None
+            environment_wind_lull = None
+            environment_wind_speed = None
+            
+            power_ch1_current = None
+            power_ch1_voltage = None
+            power_ch2_current = None
+            power_ch2_voltage = None
+            power_ch3_current = None
+            power_ch3_voltage = None
+            
         
-        # TELEMETRY_APP
-        telemetry_data = d.get('decoded', {}).get('telemetry', {}) if portnum == 'TELEMETRY_APP' else {}
-        # check for various types of telemetry
-        
-        device_metrics = telemetry_data.get('device_metrics', {})
-        
-        air_util_tx = device_metrics.get('airUtilTx')
-        battery_level = device_metrics.get('batteryLevel')
-        channel_utilization = device_metrics.get('channelUtilization')
-        uptime_seconds = device_metrics.get('uptimeSeconds')
-        voltage = device_metrics.get('voltage')
-        
-        # NODEINFO_APP
-        nodeinfo_data = d.get('decoded', {}).get('user', {}) if portnum == 'NODEINFO_APP' else {}
-        
-        node_id = nodeinfo_data.get('id')
-        node_short_name = nodeinfo_data.get('shortName')
-        node_long_name = nodeinfo_data.get('longName')
-        mac_address = nodeinfo_data.get('macaddr')
-        hw_model = nodeinfo_data.get('hwModel')
-        public_key = nodeinfo_data.get('publicKey')
-        
-        # ROUTING_APP
-        request_id = d.get('decoded', {}).get('requestId') if portnum == 'ROUTING_APP' else None
-        error_reason = d.get('decoded', {}).get('routing').get('errorReason') if portnum == 'ROUTING_APP' else None
+        if portnum == 'NODEINFO_APP':
+            nodeinfo_data = decoded.get('user', {})
+            
+            node_id = nodeinfo_data.get('id')
+            node_short_name = nodeinfo_data.get('shortName')
+            node_long_name = nodeinfo_data.get('longName')
+            mac_address = nodeinfo_data.get('macaddr')
+            hw_model = nodeinfo_data.get('hwModel')
+            public_key = nodeinfo_data.get('publicKey')
+        else:
+            node_id = None
+            node_short_name = None
+            node_long_name = None
+            mac_address = None
+            hw_model = None
+            public_key = None
+            
+        if portnum == 'ROUTING_APP':
+            request_id = decoded.get('requestId')
+            error_reason = decoded.get('routing').get('errorReason')
+        else:
+            request_id = None
+            error_reason = None
         
         out = RXPacket(
             
             publisher_mesh_node_num = publisher_mesh_node_num,
             publisher_discord_bot_user_id = publisher_discord_bot_user_id,
-            
+            has_device_metrics = has_device_metrics,
+            has_environment_metrics = has_environment_metrics,
+            has_air_quality_metrics = has_air_quality_metrics,
+            has_power_metrics = has_power_metrics,
+            has_position_data = has_position_data,
             channel = channel,
             src_id = src_id,
             src_short_name = src_short_name,
             src_long_name = src_long_name,
             dst_id = dst_id,
-            dst_short_name = src_short_name,
-            dst_long_name = src_long_name,
+            dst_short_name = dst_short_name,
+            dst_long_name = dst_long_name,
             hop_limit = hop_limit,
             hop_start = hop_start,
             pki_encrypted = pki_encrypted,
@@ -180,11 +446,64 @@ class RXPacket(Base):
             channel_utilization = channel_utilization,
             uptime_seconds = uptime_seconds,
             voltage = voltage,
+            air_quality_co2 = air_quality_co2,
+            air_quality_particles_03um = air_quality_particles_03um,
+            air_quality_particles_05um = air_quality_particles_05um,
+            air_quality_particles_10um = air_quality_particles_10um,
+            air_quality_particles_25um = air_quality_particles_25um,
+            air_quality_particles_50um = air_quality_particles_50um,
+            air_quality_particles_100um = air_quality_particles_100um,
+            air_quality_pm10_environmental = air_quality_pm10_environmental,
+            air_quality_pm10_standard = air_quality_pm10_standard,
+            air_quality_pm25_environmental = air_quality_pm25_environmental,
+            air_quality_pm25_standard = air_quality_pm25_standard,
+            air_quality_pm100_environmental = air_quality_pm100_environmental,
+            air_quality_pm100_standard = air_quality_pm100_standard,
+            
+            # telemetry/environment metrics
+            environment_barometric_pressure = environment_barometric_pressure,
+            environment_current = environment_current,
+            environment_distance = environment_distance,
+            environment_gas_resistance = environment_gas_resistance,
+            environment_iaq = environment_iaq,
+            environment_ir_lux = environment_ir_lux,
+            environment_lux = environment_lux,
+            environment_radiation = environment_radiation,
+            environment_rainfall_1h = environment_rainfall_1h,
+            environment_rainfall_24h = environment_rainfall_24h,
+            environment_relative_humidity = environment_relative_humidity,
+            environment_soil_moisture = environment_soil_moisture,
+            environment_soil_temperature = environment_soil_temperature,
+            environment_temperature = environment_temperature,
+            environment_uv_lux = environment_uv_lux,
+            environment_voltage = environment_voltage,
+            environment_weight = environment_weight,
+            environment_white_lux = environment_white_lux,
+            environment_wind_direction = environment_wind_direction,
+            environment_wind_gust = environment_wind_gust,
+            environment_wind_lull = environment_wind_lull,
+            environment_wind_speed = environment_wind_speed,
+            
+            power_ch1_current = power_ch1_current,
+            power_ch1_voltage = power_ch1_voltage,
+            power_ch2_current = power_ch2_current,
+            power_ch2_voltage = power_ch2_voltage,
+            power_ch3_current = power_ch3_current,
+            power_ch3_voltage = power_ch3_voltage,
+            
             altitude = altitude,
             latitude = latitude,
             latitudeI = latitudeI,
             longitude = longitude,
             longitudeI = longitudeI,
+            pos_time = pos_time,
+            location_source = location_source,
+            pdop = pdop,
+            ground_speed = ground_speed,
+            ground_track = ground_track,
+            sats_in_view = sats_in_view,
+            precision_bits = precision_bits,
+            
             node_id = node_id,
             node_short_name = node_short_name,
             node_long_name = node_long_name,

@@ -87,6 +87,7 @@ class DiscordBot(discord.Client):
         self.enqueue_msg(embed)
 
     def enqueue_mesh_ready(self, node_descriptor, modem_preset):
+        # TODO: Check if this is enabled in config
         embed = discord.Embed(title="Mesh Ready", description=f'Subscribed to mesh.', color=util.MeshBotColors.green())
         embed.add_field(name='Host Node', value=node_descriptor, inline=False)
         embed.add_field(name='LoRa Preset', value=modem_preset)

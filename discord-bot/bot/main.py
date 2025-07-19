@@ -202,6 +202,47 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
     await asyncio.sleep(0.1)
 
     await interaction.delete_original_response()
+
+@discord_client.tree.command(name="telemetry_exchange", description="Request telemetry exchange.")
+@discord_client.only_in_channel(discord_client.dis_channel_id)
+async def telemetry_exchange(interaction: discord.Interaction, node_num: str = None, node_id: str = None, node_shortname: str = None):
+    logging.info(f'/telemetry command received. node_num: {node_num}. node_id: {node_id}. node_shortname: {node_shortname}.')
+
+    current_time = get_current_time_str()
+    
+    embed = discord.Embed(title="Sending Telemetry Request", color=MeshBotColors.TX_PENDING())
+    embed.set_footer(text=f"{current_time}")
+    
+    if not node_id and not node_num and not node_shortname:
+        embed.add_field(name='Error Description', value=f'One of node_num, node_id, or node_shortname must be specified.', inline=False)
+        return
+    
+    try:
+        node_descriptor = mesh_client.get_node_descriptive_string(node_id=node_id, nodenum=node_num, shortname=node_shortname)
+        embed.add_field(name="To Node:", value=f'{node_descriptor}', inline=False)
+        embed.add_field(name='TX State', value='Error', inline=False)
+    except Exception as e:
+        
+        embed.add_field(name='Error Description', value=f'Node with short name: {node_shortname} not found.', inline=False)
+        embed.color = MeshBotColors.error()
+        
+    # send message to discord
+    out = await interaction.response.send_message(embed=embed)
+    
+    discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
+    if node_num:
+        logging.info(f'Sending telemetry request to nodenum: {node_num}')
+        mesh_client.enqueue_telemetry_nodenum(node_num, discord_interaction_info)
+    elif node_id:
+        logging.info(f'Sending telemetry request to node_id: {node_id}')
+        mesh_client.enqueue_telemetry_nodeid(node_id, discord_interaction_info)
+    elif node_shortname:
+        logging.info(f'Sending telemetry request to shortname: {node_shortname}')
+        mesh_client.enqueue_telemetry_shortname(node_shortname, discord_interaction_info)
+    # else:
+    #     logging.info(f'Sending telemetry request to broadcast.')
+    #     mesh_client.enqueue_telemetry_broadcast(discord_interaction_info)
+    
     
 @discord_client.tree.command(name="self", description="Lists info about directly connected node.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)

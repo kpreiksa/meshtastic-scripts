@@ -34,7 +34,6 @@ class MeshClient():
                 logging.info(f"Text message packet received from: {db_packet.src_descriptive}") # For debugging.
                 self.discord_client.enqueue_mesh_text_msg_received(packet)
 
-
             elif db_packet.portnum == 'ROUTING_APP':
                 if db_packet.priority == 'ACK':
                     if db_packet.request_id:
@@ -423,6 +422,7 @@ class MeshClient():
         Args:
             channel: Channel Index to send the message on.
             message: Message text to send.
+            discord_interaction_info: Information about discord message to fascilitate replies.
         """
         
         self._enqueue_msg(
@@ -441,9 +441,7 @@ class MeshClient():
         Args:
             nodenum: Node to DM.
             message: Message text to send.
-            guild_id: Guild ID of Discord server hosting the bot.
-            channel_id: Channel ID the message was sent on.
-            discord_message_id: Message ID of the command message.
+            discord_interaction_info: Information about discord message to fascilitate replies.
         """
         
         self._enqueue_msg(
@@ -462,9 +460,7 @@ class MeshClient():
         Args:
             nodeid: Node to DM.
             message: Message text to send.
-            guild_id: Guild ID of Discord server hosting the bot.
-            channel_id: Channel ID the message was sent on.
-            discord_message_id: Message ID of the command message.
+            discord_interaction_info: Information about discord message to fascilitate replies.
         """
         
         self._enqueue_msg(
@@ -483,9 +479,7 @@ class MeshClient():
         Args:
             nodeid: Node to DM.
             message: Message text to send.
-            guild_id: Guild ID of Discord server hosting the bot.
-            channel_id: Channel ID the message was sent on.
-            discord_message_id: Message ID of the command message.
+            discord_interaction_info: Information about discord message to fascilitate replies.
         """
 
 
@@ -497,6 +491,74 @@ class MeshClient():
                 'discord_interaction_info': discord_interaction_info,
             }
         )
+
+    def enqueue_telemetry_broadcast(self, discord_interaction_info):
+        """
+        Enqueues a telemetry broadcast
+
+        Args:
+            discord_interaction_info: Information about discord message to fascilitate replies.
+        """
+        
+        self._enqueue_msg(
+            {
+                'msg_type': 'telemetry_broadcast',
+                'discord_interaction_info': discord_interaction_info,
+            }
+        )
+
+    def enqueue_telemetry_nodenum(self, nodenum, discord_interaction_info):
+        """
+        Enqueues a telemetry request to the specified node.
+
+        Args:
+            nodenum: Node to send telemetry request to.
+            discord_interaction_info: Information about discord message to fascilitate replies.
+        """
+        
+        self._enqueue_msg(
+            {
+                'msg_type': 'telemetry_nodenum',
+                'nodenum': nodenum,
+                'discord_interaction_info': discord_interaction_info,
+            }
+        )
+
+    def enqueue_telemetry_nodeid(self, nodeid, discord_interaction_info):
+        """
+        Enqueues a telemetry request to the specified node.
+
+        Args:
+            nodeid: Node tp send telemetry request to.
+            discord_interaction_info: Information about discord message to fascilitate replies.
+        """
+        
+        self._enqueue_msg(
+            {
+                'msg_type': 'telemetry_nodeid',
+                'nodeid': nodeid,
+                'discord_interaction_info': discord_interaction_info,
+            }
+        )
+
+    def enqueue_telemetry_shortname(self, shortname, discord_interaction_info):
+        """
+        Enqueues a telemetry request to the specified node.
+
+        Args:
+            nodeid: Node tp send telemetry request to.
+            discord_interaction_info: Information about discord message to fascilitate replies.
+        """
+
+
+        self._enqueue_msg(
+            {
+                'msg_type': 'telemetry_shortname',
+                'shortname': shortname,
+                'discord_interaction_info': discord_interaction_info,
+            }
+        )
+
 
     def enqueue_active_nodes(self, active_time, method='node_db'):
         """
@@ -587,6 +649,15 @@ class MeshClient():
             pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
             self._db_session.add(pkt)
             self._db_session.commit()
+            
+    def _send_telemetry(self, nodenum=None, discord_interaction_info=None):
+        sent_packet = self.iface.sendTelemetry(wantResponse=True)
+        # sent_packet = self.iface.sendTelemetry(nodenum, wantResponse=True)
+        if sent_packet:
+            self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
+            pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
+            self._db_session.add(pkt)
+            self._db_session.commit()
     
     # queue processing/background loop
 
@@ -618,6 +689,24 @@ class MeshClient():
                 # TODO: If we did not get a nodenum back... respond to the original message with a 
                 # descriptive error
                 self._send_dm(nodenum, message, discord_interaction_info)
+            elif msg_type == 'telemetry_broadcast':
+                # TODO: Add ability to send on other channels if this even makes sense
+                self._send_telemetry(discord_interaction_info=discord_interaction_info)
+            elif msg_type == 'telemetry_nodenum':
+                nodenum = msg.get('nodenum')
+                self._send_telemetry(nodenum=nodenum, discord_interaction_info=discord_interaction_info)
+            elif msg_type == 'telemetry_nodeid':
+                nodeid = msg.get('nodeid')
+                nodenum = self.get_node_num(node_id=nodeid)
+                if not nodenum:
+                    self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node ID: {nodeid} is invalid.')
+                    return
+                self._send_telemetry(nodenum=nodenum, discord_interaction_info=discord_interaction_info)
+            elif msg_type == 'telemetry_shortname':
+                shortname = msg.get('shortname')
+                nodenum = self.get_node_num(shortname=shortname)
+                self._send_telemetry(nodenum=nodenum, discord_interaction_info=discord_interaction_info)
+                
         else:
             logging.error(f'Unknown message type in mesh queue: {type(msg)}')
             logging.error(f'Message content: {msg}')
