@@ -182,3 +182,4 @@ nodes_dump.json
 
 
 *.db
+discord-bot/config.json

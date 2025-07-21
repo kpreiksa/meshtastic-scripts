@@ -72,8 +72,8 @@ class DiscordBot(discord.Client):
             if not packet.hop_limit:
                 hop_start = "?"
         
-        embed = discord.Embed(title="Message Received", description=packet.decoded.text, color=util.MeshBotColors.RX())
-        embed.add_field(name="From Node", value=packet.from_descriptive, inline=False)
+        embed = discord.Embed(title="Message Received", description=packet.text, color=util.MeshBotColors.RX())
+        embed.add_field(name="From Node", value=packet.src_descriptive, inline=False)
         embed.add_field(name="RxSNR / RxRSSI", value=f"{packet.rx_snr_str} / {packet.rx_rssi_str}", inline=True)
         embed.add_field(name="Hops", value=f"{hops} / {hop_start}", inline=True)
         embed.set_footer(text=f"{current_time}")

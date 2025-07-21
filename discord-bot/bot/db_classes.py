@@ -128,7 +128,10 @@ class RXPacket(Base):
     
     @property
     def dst_descriptive(self):
-        return f'{self.dst_id} | {self.dst_short_name} | {self.dst_long_name}'
+        if self.dst_id == meshtastic.BROADCAST_ADDR:
+            return 'All Nodes'
+        else:
+            return f'{self.dst_id} | {self.dst_short_name} | {self.dst_long_name}'
     
     @property
     def rx_snr_str(self):

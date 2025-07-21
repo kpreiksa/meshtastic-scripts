@@ -32,7 +32,7 @@ class MeshClient():
             
             if db_packet.is_text_message:
                 logging.info(f"Text message packet received from: {db_packet.src_descriptive}") # For debugging.
-                self.discord_client.enqueue_mesh_text_msg_received(packet)
+                self.discord_client.enqueue_mesh_text_msg_received(db_packet)
 
             elif db_packet.portnum == 'ROUTING_APP':
                 if db_packet.priority == 'ACK':
