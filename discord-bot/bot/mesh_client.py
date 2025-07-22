@@ -29,7 +29,7 @@ class MeshClient():
             db_packet = RXPacket.from_dict(packet, self)
             self._db_session.add(db_packet)
             self._db_session.commit() # save back to db
-            
+
             if db_packet.is_text_message:
                 logging.info(f"Text message packet received from: {db_packet.src_descriptive}") # For debugging.
                 self.discord_client.enqueue_mesh_text_msg_received(db_packet)
@@ -39,7 +39,7 @@ class MeshClient():
                     if db_packet.request_id:
 
                         logging.info(f'Got ACK from {db_packet.src_descriptive}. Request ID: {db_packet.request_id}')
-                        
+
                         matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=db_packet.request_id).first()
                         if matching_packet:
                             # if we find the packet in the db matching the request ID of the ACK... update it to say
@@ -51,7 +51,7 @@ class MeshClient():
                             self._db_session.add(ack_obj)
                             matching_packet.acks.append(ack_obj)
                             self._db_session.commit() # save back to db
-                            
+
                             self.discord_client.enqueue_ack(matching_packet.discord_message_id, db_packet.src_id, db_packet.rx_rssi, db_packet.rx_snr, db_packet.hop_start, db_packet.hop_limit, is_implicit=implicit_ack)
                         else:
                             logging.error(f'No matching packet found for request_id: {db_packet.request_id}.\n Maybe the packet isnt in the DB yet, and/or is this a self-ack?')
@@ -81,7 +81,7 @@ class MeshClient():
                 self._db_session.add(new_node)
         # should only need to commit once
         self._db_session.commit()
-        
+
         logging.info('***CONNECTED***')
         logging.info('***************')
         logging.info(f'Node Num:              {self.my_node_info.node_num}')
@@ -92,10 +92,10 @@ class MeshClient():
         logging.info(f'HW Model:              {self.my_node_info.user_info.hw_model}')
         logging.info(f'Device Role:           {interface.localNode.localConfig.device.role}')
         logging.info(f'Node Info Periodicity: {interface.localNode.localConfig.device.node_info_broadcast_secs}')
-        logging.info(f'Modem Preset:          {interface.localNode.localConfig.lora.modem_preset}')
+        logging.info(f'Modem Preset:          {interface.localNode.localConfig.lora.modem_preset} - {self.config.channel_names[interface.localNode.localConfig.lora.modem_preset]}') # TODO make sure this isn't unique to serial_interface
         logging.info(f'TX Power:              {interface.localNode.localConfig.lora.tx_power}')
         logging.info('***************')
-        
+
         node_descriptor = f'{self.my_node_info.user_info.user_id} | {self.my_node_info.user_info.short_name} | {self.my_node_info.user_info.long_name}'
         self.discord_client.enqueue_mesh_ready(node_descriptor, interface.localNode.localConfig.lora.modem_preset)
 
@@ -111,26 +111,26 @@ class MeshClient():
 
     def onMsgResponse(self, d):
         # if there is a request Id... look it up in the Db and acknowledge
-        
+
         db_packet = RXPacket.from_dict(d, self)
         self._db_session.add(db_packet)
         self._db_session.commit() # save back to db
-        
+
         logging.info(f'Got Response to packet: {db_packet.request_id} from {db_packet.src_descriptive})')
-        
+
         matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=db_packet.request_id).first()
         if matching_packet:
             # if we find the packet in the db matching the request ID of the ACK... update it to say
             # it is acknowledged
             matching_packet.acknowledge_received = True
-            
+
             implicit_ack = db_packet.request_id == self.my_node_info.user_info.user_id
             ack_obj = ACK.from_rx_packet(db_packet, self)
-            
+
             self._db_session.add(ack_obj)
             matching_packet.acks.append(ack_obj)
             self._db_session.commit() # save back to db
-            
+
             # enqueue response to be sent back to discord
             self.discord_client.enqueue_ack(matching_packet.discord_message_id, db_packet.src_id, db_packet.rx_rssi, db_packet.rx_snr, db_packet.hop_start, db_packet.hop_limit, is_implicit=implicit_ack)
         else:
@@ -138,28 +138,28 @@ class MeshClient():
 
     def __init__(self, db_session, config):
         self.config = config
-        
+
         # queue for incoming requests (e.g. from discord bot commands) to send things over the mesh
         self._meshqueue = queue.Queue(maxsize=20)
-        
+
         # queue to perform admin actions involving the node
         self._adminqueue = queue.Queue(maxsize=20)
 
         # sqlalchemy database session
         self._db_session = db_session
-        
+
         # reference to discord client - used for sending responses to user
         self.discord_client = None
-        
+
         # meshtastic stuff
         self.iface = None
         self.nodes = {}
         self.myNodeInfo = None #TODO: switch this to use the node object created onConnectionMesh
         self.my_node_info = None
-         
+
     def connect(self):
         """Connect to meshtastic device and subscribe to events for processing."""
-        
+
         interface_info = self.config.interface_info
 
         logging.info(f'Connecting with interface: {interface_info.connection_descriptor}')
@@ -197,7 +197,7 @@ class MeshClient():
 
     def link_discord(self, discord_client):
         self.discord_client = discord_client
-        
+
     # TODO: remove these and use node objs/db everywhere
 
     def get_long_name(self, node_id, default = '?'):
@@ -213,7 +213,7 @@ class MeshClient():
         elif node_id.lower() == '!ffffffff':
             return '^all'
         return default
-    
+
     def get_node_descriptive_string(self, node_id=None, nodenum=None, shortname=None, default = '?'):
 
         if node_id:
@@ -222,9 +222,9 @@ class MeshClient():
         else:
             node_id = self.get_node_id(node_id=node_id, nodenum=nodenum, shortname=shortname)
             return self.get_node_descriptive_string(node_id=node_id)
-        
+
         return default
-    
+
     def get_node_info(self, node_id=None, nodenum=None, shortname=None, longname=None):
         if node_id:
             if not node_id.startswith('!'):
@@ -233,7 +233,7 @@ class MeshClient():
         if nodenum:
             node_id = '!' + hex(nodenum)[2:]
             return self.get_node_info(node_id=node_id)
-        
+
         if shortname:
             nodes = [node_data for node_data in self.nodes.values() if node_data.get('user',{}).get('shortName',)==shortname]
             if len(nodes) == 1:
@@ -241,7 +241,7 @@ class MeshClient():
             else:
                 logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
                 return None
-            
+
         if longname:
             nodes = [node_data for node_data in self.nodes.values() if node_data.get('user',{}).get('longName',)==longname]
             if len(nodes) == 1:
@@ -249,7 +249,7 @@ class MeshClient():
             else:
                 logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
                 return None
-        
+
     def get_node_id(self, node_id=None, nodenum=None, shortname=None, longname=None):
         if node_id:
             return node_id
@@ -259,12 +259,12 @@ class MeshClient():
         else:
             node = self.get_node_info(shortname=shortname, longname=longname)
             return node.get('user', {}).get('id')
-    
+
     def get_node_num(self, node_id=None, nodenum=None, shortname=None, longname=None):
-        
+
         if nodenum:
             return nodenum
-        
+
         elif node_id:
             if node_id.startswith('!'):
                 node_id = node_id.strip('!')
@@ -276,9 +276,9 @@ class MeshClient():
         else:
             node = self.get_node_info(shortname=shortname, longname=longname)
             return node.get('num')
-        
+
     # admin tasks
-        
+
     def get_active_nodes(self, time_limit=15):
 
         logging.info(f'get_active_nodes has been called with: {time_limit} mins')
@@ -370,7 +370,7 @@ class MeshClient():
                 else:
                     timestr = '???'
                     ts = 0
-                    
+
                 # if is_self:
                 #     nodelist.append([f"\n {id} (**SELF**) | {shortname} | {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
                 # else:
@@ -393,10 +393,10 @@ class MeshClient():
         # runs every minute, not eff but idk what else to do
 
         #TODO: use Node obj created in onConnectionMesh. Possibly make it auto-updating when accessed
-        
-        
+
+
         battery_level = self.myNodeInfo.get('deviceMetrics',{}).get('batteryLevel',100)
-        
+
         self.my_node_info.device_metrics.battery_level
         if battery_level > (battery_warning + battery_level/2):
             self.battery_warning_sent = False
@@ -408,11 +408,11 @@ class MeshClient():
                 f"**NodeName:** {self.my_node_info.user_info.short_name} | {self.my_node_info.user_info.long_name}\n"
                 f"**Battery Level:** {battery_level}%"
             )
-            
+
             self.discord_client.enqueue_battery_low_alert(text)
 
 
-        
+
     # methods to ensure we enqueue the proper type of command/message
 
     def enqueue_send_channel(self, channel, message, discord_interaction_info):
@@ -424,7 +424,7 @@ class MeshClient():
             message: Message text to send.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
-        
+
         self._enqueue_msg(
             {
                 'msg_type': 'send_channel',
@@ -443,7 +443,7 @@ class MeshClient():
             message: Message text to send.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
-        
+
         self._enqueue_msg(
             {
                 'msg_type': 'send_nodenum',
@@ -462,7 +462,7 @@ class MeshClient():
             message: Message text to send.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
-        
+
         self._enqueue_msg(
             {
                 'msg_type': 'send_nodeid',
@@ -499,7 +499,7 @@ class MeshClient():
         Args:
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
-        
+
         self._enqueue_msg(
             {
                 'msg_type': 'telemetry_broadcast',
@@ -515,7 +515,7 @@ class MeshClient():
             nodenum: Node to send telemetry request to.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
-        
+
         self._enqueue_msg(
             {
                 'msg_type': 'telemetry_nodenum',
@@ -532,7 +532,7 @@ class MeshClient():
             nodeid: Node tp send telemetry request to.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
-        
+
         self._enqueue_msg(
             {
                 'msg_type': 'telemetry_nodeid',
@@ -568,7 +568,7 @@ class MeshClient():
             active_time: Time to look back to find active nodes.
             method: Method used to calculate (node_db, db)
         """
-        
+
         self._enqueue_admin_msg(
             {
                 'msg_type': 'active_nodes',
@@ -580,10 +580,10 @@ class MeshClient():
     def enqueue_all_nodes(self, method='node_db'):
         """
         Requests all nodes in node db.
-        
+
         Args:
             method: Method used to calculate (node_db, db)
-            
+
         """
         self._enqueue_admin_msg(
             {
@@ -591,14 +591,14 @@ class MeshClient():
                 'method': method,
             }
         )
-        
+
     def enqueue_traceroute(self, node_id):
         """
         Requests all nodes in node db.
-        
+
         Args:
             node_id: Node ID to traceroute
-            
+
         """
         self._enqueue_admin_msg(
             {
@@ -613,20 +613,20 @@ class MeshClient():
     def _enqueue_msg(self, msg):
         """
         Puts a message on the queue for processing.
-        
+
         Args:
             msg: Command message
-            
+
         """
         self._meshqueue.put(msg)
 
     def _enqueue_admin_msg(self, msg):
         """
         Puts a message on the queue for processing.
-        
+
         Args:
             msg: Command message
-            
+
         """
         self._adminqueue.put(msg)
 
@@ -640,7 +640,7 @@ class MeshClient():
         pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
         self._db_session.add(pkt)
         self._db_session.commit()
-    
+
     def _send_dm(self, nodenum, message, discord_interaction_info=None):
         logging.info(f'Sending message to: {nodenum}')
         sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
@@ -649,7 +649,7 @@ class MeshClient():
             pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
             self._db_session.add(pkt)
             self._db_session.commit()
-            
+
     def _send_telemetry(self, nodenum=None, discord_interaction_info=None):
         sent_packet = self.iface.sendTelemetry(wantResponse=True)
         # sent_packet = self.iface.sendTelemetry(nodenum, wantResponse=True)
@@ -658,7 +658,7 @@ class MeshClient():
             pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
             self._db_session.add(pkt)
             self._db_session.commit()
-    
+
     # queue processing/background loop
 
     def process_queue_message(self, msg):
@@ -666,7 +666,7 @@ class MeshClient():
             msg_type = msg.get('msg_type')
             message = msg.get('message')
             discord_interaction_info = msg.get('discord_interaction_info')
-            
+
             if msg_type == 'send_channel':
                 channel = msg.get('channel')
                 self._send_channel(channel, message, discord_interaction_info)
@@ -680,13 +680,13 @@ class MeshClient():
                 if not nodenum:
                     self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node ID: {nodeid} is invalid.')
                     return
-                # TODO: If we did not get a nodenum back... respond to the original message with a 
+                # TODO: If we did not get a nodenum back... respond to the original message with a
                 # descriptive error
                 self._send_dm(nodenum, message, discord_interaction_info)
             elif msg_type == 'send_shortname':
                 shortname = msg.get('shortname')
                 nodenum = self.get_node_num(shortname=shortname)
-                # TODO: If we did not get a nodenum back... respond to the original message with a 
+                # TODO: If we did not get a nodenum back... respond to the original message with a
                 # descriptive error
                 self._send_dm(nodenum, message, discord_interaction_info)
             elif msg_type == 'telemetry_broadcast':
@@ -706,7 +706,7 @@ class MeshClient():
                 shortname = msg.get('shortname')
                 nodenum = self.get_node_num(shortname=shortname)
                 self._send_telemetry(nodenum=nodenum, discord_interaction_info=discord_interaction_info)
-                
+
         else:
             logging.error(f'Unknown message type in mesh queue: {type(msg)}')
             logging.error(f'Message content: {msg}')
@@ -746,7 +746,7 @@ class MeshClient():
         #TODO: use Node obj created in onConnectionMesh. Possibly make it auto-updating when accessed
         # instead of updating here
         self.myNodeInfo = self.iface.getMyNodeInfo()
-        
+
         try:
             self.iface.sendHeartbeat()
         except Exception as e:

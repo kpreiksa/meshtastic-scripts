@@ -120,7 +120,7 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
 async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
     logging.info(f'/sendnum command received. NodeNum: {nodenum}. Sending message: {message}')
     # TODO add error handling for nodenum
-    
+
     # craft message
     current_time = get_current_time_str()
     embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
@@ -140,9 +140,9 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
     logging.info(f'/send_shortname command received. nodeName: {node_name}. Sending message: {message}')
 
     current_time = get_current_time_str()
-    
+
     # craft message
-    
+
     embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
     try:
         node_descriptor = mesh_client.get_node_descriptive_string(shortname=node_name)
@@ -153,11 +153,11 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
         embed.add_field(name="To Node:", value='?', inline=False)
         embed.add_field(name='TX State', value='Error', inline=False)
         embed.add_field(name='Error Description', value=f'Node with short name: {node_name} not found.', inline=False)
-        
+
     embed.set_footer(text=f"{current_time}")
     # send message to discord
     out = await interaction.response.send_message(embed=embed)
-    
+
     # queue message to be sent on mesh
     discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
     mesh_client.enqueue_send_shortname(node_name, message, discord_interaction_info)
@@ -167,7 +167,7 @@ for mesh_channel_index, mesh_channel_name in config.channel_names.items():
     @discord_client.tree.command(name=mesh_channel_name.lower(), description=f"Send a message in the {mesh_channel_name} channel.")
     @discord_client.only_in_channel(discord_client.dis_channel_id)
     async def send_channel_message(interaction: discord.Interaction, message: str, mesh_channel_index: int = mesh_channel_index):
-        logging.info(f'/{mesh_channel_name} command received. Sending message: {message}')
+        logging.info(f'/{interaction.command.name} command received. Sending message: {message}')
         current_time = get_current_time_str()
 
         embed = discord.Embed(title=f"Sending Message", description=message, color=MeshBotColors.TX_PENDING())
@@ -176,7 +176,7 @@ for mesh_channel_index, mesh_channel_name in config.channel_names.items():
         embed.set_footer(text=f"{current_time}")
 
         out = await interaction.response.send_message(embed=embed)
-        
+
         discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
         mesh_client.enqueue_send_channel(mesh_channel_index, message, discord_interaction_info=discord_interaction_info)
 
@@ -209,26 +209,26 @@ async def telemetry_exchange(interaction: discord.Interaction, node_num: str = N
     logging.info(f'/telemetry command received. node_num: {node_num}. node_id: {node_id}. node_shortname: {node_shortname}.')
 
     current_time = get_current_time_str()
-    
+
     embed = discord.Embed(title="Sending Telemetry Request", color=MeshBotColors.TX_PENDING())
     embed.set_footer(text=f"{current_time}")
-    
+
     if not node_id and not node_num and not node_shortname:
         embed.add_field(name='Error Description', value=f'One of node_num, node_id, or node_shortname must be specified.', inline=False)
         return
-    
+
     try:
         node_descriptor = mesh_client.get_node_descriptive_string(node_id=node_id, nodenum=node_num, shortname=node_shortname)
         embed.add_field(name="To Node:", value=f'{node_descriptor}', inline=False)
         embed.add_field(name='TX State', value='Error', inline=False)
     except Exception as e:
-        
+
         embed.add_field(name='Error Description', value=f'Node with short name: {node_shortname} not found.', inline=False)
         embed.color = MeshBotColors.error()
-        
+
     # send message to discord
     out = await interaction.response.send_message(embed=embed)
-    
+
     discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
     if node_num:
         logging.info(f'Sending telemetry request to nodenum: {node_num}')
@@ -242,13 +242,13 @@ async def telemetry_exchange(interaction: discord.Interaction, node_num: str = N
     # else:
     #     logging.info(f'Sending telemetry request to broadcast.')
     #     mesh_client.enqueue_telemetry_broadcast(discord_interaction_info)
-    
-    
+
+
 @discord_client.tree.command(name="self", description="Lists info about directly connected node.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def describe_self(interaction: discord.Interaction):
     logging.info(f'/self received.')
-    
+
     text = [
         f'**Node ID:** {mesh_client.my_node_info.user_info.user_id}',
         f'**Short Name:** {mesh_client.my_node_info.user_info.short_name}',
@@ -256,7 +256,7 @@ async def describe_self(interaction: discord.Interaction):
         f'**MAC Address:** {mesh_client.my_node_info.user_info.mac_address}',
         f'**HW Model:** {mesh_client.my_node_info.user_info.hw_model}',
     ]
-    
+
     embed = discord.Embed(title='Local Node Information', description='\n'.join(text))
     await interaction.response.send_message(embed=embed)
 
@@ -320,7 +320,7 @@ async def debug(interaction: discord.Interaction):
         logging.info(f'Error trying to dump all nodes. \nError: {e}\n')
 
     await asyncio.sleep(0.1)
-    
+
 # Callsign Search Command
 @discord_client.tree.command(name="ham", description="Search for a callsign.")
 async def ham(interaction: discord.Interaction, callsign: str):
@@ -359,7 +359,7 @@ async def ham(interaction: discord.Interaction, callsign: str):
 @discord_client.tree.command(name='map', description=f"Lookup node location and display map.")
 async def get_node_map(interaction: discord.Interaction, node_name: str, map_zoom_level: int = 12):
     logging.info(f'/map command received.')
-    
+
     node = mesh_client.get_node_info(shortname=node_name)
     current_time = get_current_time_str()
 
