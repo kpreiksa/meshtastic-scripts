@@ -26,6 +26,11 @@ class MeshClient():
     def onReceiveMesh(self, packet, interface):  # Called when a packet arrives from mesh.
 
         try:
+            from_id = None
+            if 'from' in packet and packet['from']:
+                from_id = '!' + hex(packet['from'])[2:]
+            portnum = packet.get('decoded', {}).get('portnum')
+            
             db_packet = RXPacket.from_dict(packet, self)
             self._db_session.add(db_packet)
             self._db_session.commit() # save back to db
@@ -56,10 +61,17 @@ class MeshClient():
                         else:
                             logging.error(f'No matching packet found for request_id: {db_packet.request_id}.\n Maybe the packet isnt in the DB yet, and/or is this a self-ack?')
             else:
-                logging.info(f'Received unhandled packet type: {db_packet.portnum}')
+                if portnum:
+                    logging.info(f'Received unhandled packet type: {portnum} from: {from_id}')
+                else:
+                    # couldn't even get portnum. Check if 'encrypted' exists
+                    encrypted = packet.get('encrypted')
+                    if encrypted:
+                        # packet is encrypted. Probably a mismatched key or a relayed message?
+                        logging.info(f'Got packet with encrypted attribute, and unable to decode. From: {from_id}')
 
         except Exception as e:
-            logging.error(f'Error parsing packet: {str(e)}')
+            logging.error(f'Error parsing packet. Type: {portnum}. From: {from_id}. Exception: {str(type(e))}. Exception Detail: {e}')
 
     def onConnectionMesh(self, interface, topic=None):
         # interface, obj
@@ -200,7 +212,7 @@ class MeshClient():
         
     # TODO: remove these and use node objs/db everywhere
 
-    def get_long_name(self, node_id, default = '?'):
+    def get_long_name(self, node_id=None, default = '?'):
         if node_id in self.nodes:
             return self.nodes[node_id]['user'].get('longName', default)
         elif node_id.lower() == '!ffffffff':
