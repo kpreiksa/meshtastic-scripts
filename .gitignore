@@ -172,3 +172,14 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+discord-bot/config/config.json
+temp*json
+*tar
+mynotes*
+my_node_dump.json
+nodes_dump.json
+
+
+*.db
+discord-bot/config.json
