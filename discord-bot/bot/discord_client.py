@@ -42,16 +42,17 @@ class DiscordBot(discord.Client):
     def enqueue_msg(self, msg):
         self._discordqueue.put(msg)
         
-    def enqueue_ack(self, discord_message_id, ack_by_id, response_rx_rssi, response_rx_snr, response_hop_start, response_hop_limit, is_implicit):
+    def enqueue_ack(self, ack_obj):
         self._enqueue_mesh_response({
             'msg_type': 'ACK',
-            'discord_message_id': discord_message_id,
-            'response_from_id': ack_by_id,
-            'response_rx_rssi': response_rx_rssi,
-            'response_rx_snr': response_rx_snr,
-            'response_hop_start': response_hop_start,
-            'response_hop_limit': response_hop_limit,
-            'is_implicit': is_implicit,
+            'discord_message_id': ack_obj.tx_packet.discord_message_id,
+            'response_from_id': ack_obj.ack_packet.src_id,
+            'response_rx_rssi': ack_obj.ack_packet.rx_rssi_str,
+            'response_rx_snr': ack_obj.ack_packet.rx_snr_str,
+            'response_hop_start': ack_obj.ack_packet.hop_start,
+            'response_hop_limit': ack_obj.ack_packet.hop_limit,
+            'is_implicit': ack_obj.implicit_ack,
+            'ack_error_reason': ack_obj.ack_packet.error_reason
         })
         
     def enqueue_mesh_text_msg_received(self, packet):
@@ -145,7 +146,13 @@ class DiscordBot(discord.Client):
             
             is_implicit = msg.get('is_implicit', True)
             
-            ack_text = 'Acknowledged (Implicit)' if is_implicit else 'Acknowledged (Explicit)'
+            # TODO: Figure out what the different ACK errors mean
+            ack_error = msg.get('ack_error_reason')
+            # ack_error = ack_error if ack_error != 'NONE' else None
+            
+            ack_str = f'Acknowledged - Error Reason: {ack_error}' if ack_error else 'Acknowledged'
+            
+            ack_text = f'{ack_str} (Implicit)' if is_implicit else f'{ack_str} (Explicit)'
             
             rx_rssi = msg.get('response_rx_rssi')
             rx_snr = msg.get('response_rx_snr')
@@ -158,8 +165,12 @@ class DiscordBot(discord.Client):
             
             if is_implicit:
                 ack_text_2.append('**ACK Type:**: Implicit')
+                # if ack_error:
+                ack_text_2.append(f'**Error Reason:** {ack_error}')
             else:
                 ack_text_2.append('**ACK Type:**: Explicit')
+                # if ack_error:
+                ack_text_2.append(f'**Error Reason:** {ack_error}')
                 ack_text_2.append(f'**Node:**: {self.mesh_client.get_node_descriptive_string(node_id=ack_by_id)}')
             
             if signal_metrics_available:

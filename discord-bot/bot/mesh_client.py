@@ -57,7 +57,7 @@ class MeshClient():
                             matching_packet.acks.append(ack_obj)
                             self._db_session.commit() # save back to db
 
-                            self.discord_client.enqueue_ack(matching_packet.discord_message_id, db_packet.src_id, db_packet.rx_rssi, db_packet.rx_snr, db_packet.hop_start, db_packet.hop_limit, is_implicit=implicit_ack)
+                            self.discord_client.enqueue_ack(ack_obj)
                         else:
                             logging.error(f'No matching packet found for request_id: {db_packet.request_id}.\n Maybe the packet isnt in the DB yet, and/or is this a self-ack?')
             else:
@@ -144,7 +144,7 @@ class MeshClient():
             self._db_session.commit() # save back to db
 
             # enqueue response to be sent back to discord
-            self.discord_client.enqueue_ack(matching_packet.discord_message_id, db_packet.src_id, db_packet.rx_rssi, db_packet.rx_snr, db_packet.hop_start, db_packet.hop_limit, is_implicit=implicit_ack)
+            self.discord_client.enqueue_ack(ack_obj)
         else:
             logging.error(f'No matching packet found for request_id: {db_packet.request_i}.\n Maybe the packet isnt in the DB yet, and/or is this a self-ack?')
 
