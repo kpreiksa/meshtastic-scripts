@@ -38,6 +38,10 @@ class MeshClient():
             if db_packet.is_text_message:
                 logging.info(f"Text message packet received from: {db_packet.src_descriptive}") # For debugging.
                 self.discord_client.enqueue_mesh_text_msg_received(db_packet)
+                
+            elif db_packet.portnum == 'NODEINFO_APP':
+                # get the nodeinfo and update the MeshNodeDB
+                MeshNodeDB.update_from_nodeinfo(packet, self)
 
             elif db_packet.portnum == 'ROUTING_APP':
                 if db_packet.priority == 'ACK':
@@ -86,8 +90,7 @@ class MeshClient():
             # see if node with num exists in db
             matching_node = self._db_session.query(MeshNodeDB).filter_by(node_num=node_num).first()
             if matching_node:
-                # TODO: Make update func
-                pass
+                MeshNodeDB.update_from_nodedb(node_num, node, self)
             else:
                 new_node = MeshNodeDB.from_dict(node, self)
                 self._db_session.add(new_node)

@@ -5,10 +5,15 @@ class DiscordInteractionInfo():
     """
     Everything needed to uniquely identify a message for purposes of responding to it
     """
-    def __init__(self, guild_id, channel_id, message_id):
+    def __init__(self, guild_id, channel_id, message_id, user_id=None, user_display_name=None, user_global_name=None, user_name=None, user_mention=None):
         self._guild_id = guild_id
         self._channel_id = channel_id
         self._message_id = message_id
+        self._user_id = user_id
+        self._user_display_name = user_display_name
+        self._user_global_name = user_global_name
+        self._user_name = user_name
+        self._user_mention = user_mention
         
     @property
     def guild_id(self):
@@ -21,6 +26,27 @@ class DiscordInteractionInfo():
     @property
     def message_id(self):
         return self._message_id
+    
+    @property
+    def user_id(self):
+        return self._user_id
+    
+    @property
+    def user_display_name(self):
+        return self._user_display_name
+    
+    @property
+    def user_global_name(self):
+        return self._user_global_name
+    
+    @property
+    def user_name(self):
+        return self._user_name
+    
+    @property
+    def user_mention(self):
+        return self._user_mention
+    
 
 def get_current_time_str():
     return datetime.now().strftime('%d %B %Y %I:%M:%S %p')

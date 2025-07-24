@@ -106,7 +106,7 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
 
         # send message
         out = await interaction.response.send_message(embed=embed, ephemeral=False)
-        discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
+        discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id, interaction.user.id, interaction.user.display_name, interaction.user.global_name, interaction.user.name, interaction.user.mention)
 
         mesh_client.enqueue_send_nodeid(nodeid, message, discord_interaction_info)
 
@@ -129,7 +129,7 @@ async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
     embed.set_footer(text=f"{current_time}")
     # send message
     out = await interaction.response.send_message(embed=embed)
-    discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
+    discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id, interaction.user.id, interaction.user.display_name, interaction.user.global_name, interaction.user.name, interaction.user.mention)
 
     mesh_client.enqueue_send_nodenum(nodenum, message, discord_interaction_info)
 
@@ -159,7 +159,7 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
     out = await interaction.response.send_message(embed=embed)
 
     # queue message to be sent on mesh
-    discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
+    discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id, interaction.user.id, interaction.user.display_name, interaction.user.global_name, interaction.user.name, interaction.user.mention)
     mesh_client.enqueue_send_shortname(node_name, message, discord_interaction_info)
 
 # Dynamically create commands based on mesh_channel_names
@@ -177,7 +177,7 @@ for mesh_channel_index, mesh_channel_name in config.channel_names.items():
 
         out = await interaction.response.send_message(embed=embed)
 
-        discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
+        discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id, interaction.user.id, interaction.user.display_name, interaction.user.global_name, interaction.user.name, interaction.user.mention)
         mesh_client.enqueue_send_channel(mesh_channel_index, message, discord_interaction_info=discord_interaction_info)
 
 
@@ -229,7 +229,7 @@ async def telemetry_exchange(interaction: discord.Interaction, node_num: str = N
     # send message to discord
     out = await interaction.response.send_message(embed=embed)
 
-    discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
+    discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id, interaction.user.id, interaction.user.display_name, interaction.user.global_name, interaction.user.name, interaction.user.mention)
     if node_num:
         logging.info(f'Sending telemetry request to nodenum: {node_num}')
         mesh_client.enqueue_telemetry_nodenum(node_num, discord_interaction_info)
