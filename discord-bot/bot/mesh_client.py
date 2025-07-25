@@ -42,6 +42,10 @@ class MeshClient():
             elif db_packet.portnum == 'NODEINFO_APP':
                 # get the nodeinfo and update the MeshNodeDB
                 MeshNodeDB.update_from_nodeinfo(packet, self)
+                
+            elif db_packet.portnum == 'TRACEROUTE_APP':
+                # get the nodeinfo and update the MeshNodeDB
+                pass
 
             elif db_packet.portnum == 'ROUTING_APP':
                 if db_packet.priority == 'ACK':

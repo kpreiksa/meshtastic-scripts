@@ -78,6 +78,9 @@ class RXPacket(Base):
     request_id = Column(String) # maybe int?
     error_reason = Column(String)
     
+    # traceroute
+    traceroute_data = Column(JSON)
+    
     ts = Column(DateTime)
     
     @property
@@ -250,6 +253,15 @@ class RXPacket(Base):
         if portnum == 'ROUTING_APP':
             request_id = decoded.get('requestId')
             error_reason = decoded.get('routing').get('errorReason')
+            
+        traceroute_data = {}
+            
+        if portnum == 'TRACEROUTE_APP':
+            traceroute_data = decoded.get('traceroute', {})
+            try:
+                del traceroute_data['raw']
+            except:
+                pass
         
         out = RXPacket(
             
@@ -308,6 +320,7 @@ class RXPacket(Base):
             public_key = public_key,
             request_id = request_id,
             error_reason = error_reason,
+            traceroute_data = traceroute_data,
             ts=datetime.datetime.now()
             
         )

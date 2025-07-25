@@ -224,23 +224,22 @@ async def active(interaction: discord.Interaction, node_id: str):
         node_info = []
         matching_node = matching_nodes[0]
         matching_packets = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).all()
-        txt_message_packets = [x for x in matching_packets if x.portnum == 'TEXT_MESSAGE_APP']
-        telemetry_packets = [x for x in matching_packets if x.portnum == 'TELEMETRY_APP']
-        position_packets = [x for x in matching_packets if x.portnum == 'POSITION_APP']
-        nodeinfo_packets = [x for x in matching_packets if x.portnum == 'NODEINFO_APP']
+        portnums = list(set([x.portnum for x in matching_packets]))
         
         node_info.append(f"**Cnt Packets RX'd:** {len(matching_packets)}")
-        node_info.append(f"**Cnt TEXT_MESSAGE_APP RX'd:** {len(txt_message_packets)}")
-        node_info.append(f"**Cnt TELEMETRY_APP RX'd:** {len(telemetry_packets)}")
-        node_info.append(f"**Cnt POSITION_APP RX'd:** {len(position_packets)}")
-        node_info.append(f"**Cnt NODEINFO_APP RX'd:** {len(nodeinfo_packets)}")
+        
+        for portnum in portnums:
+            portnum_packets = [x for x in matching_packets if x.portnum == portnum]
+            node_info.append(f"\t**{portnum}:** {len(portnum_packets)}")
         
         if matching_node.hw_model is not None:
             node_info.append(f'**HW Model:** {matching_node.hw_model}')
         if matching_node.upd_ts_nodedb is not None:
-            node_info.append(f'**Last Update (Node DB):** {matching_node.upd_ts_nodedb.strftime('%d %B %Y %I:%M:%S %p')}')
+            t_str = matching_node.upd_ts_nodedb.strftime('%d %B %Y %I:%M:%S %p')
+            node_info.append(f'**Last Update (Node DB):** {t_str}')
         if matching_node.upd_ts_nodeinfo is not None:
-            node_info.append(f'**Last Update (Node Info):** {matching_node.upd_ts_nodeinfo.strftime('%d %B %Y %I:%M:%S %p')}')
+            t_str = matching_node.upd_ts_nodeinfo.strftime('%d %B %Y %I:%M:%S %p')
+            node_info.append(f'**Last Update (Node Info):** {t_str}')
             
         node_info_str = '\n'.join(node_info)
         embed.add_field(name=matching_node.descriptive_name, value=node_info_str, inline=False)
