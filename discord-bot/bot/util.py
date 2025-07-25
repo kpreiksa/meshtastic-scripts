@@ -44,11 +44,11 @@ class DiscordInteractionInfo():
     @property
     def guild_id(self):
         return self._guild_id
-    
+
     @property
     def channel_id(self):
         return self._channel_id
-    
+
     @property
     def message_id(self):
         return self._message_id
@@ -91,12 +91,18 @@ class MeshBotColors():
         'yellow': 0xFFCB61,
         'violet': 0x9467EA,
         'magenta': 0xEA67AD,
-        'blue': 0x77BEF0
+        'blue': 0x77BEF0,
+        'white': 0xFFFFFF,
+        'black': 0x000000,
     }
 
     @classmethod
     def _item_list(cls):
         return list(cls._item_dict.values())
+
+    @classmethod
+    def white(cls):
+        return cls._item_dict['white']
 
     @classmethod
     def green(cls):
@@ -129,15 +135,15 @@ class MeshBotColors():
     @classmethod
     def error(cls):
         return cls._item_dict['red']
-    
+
     @classmethod
     def TX_PENDING(cls):
         return cls._item_dict['peach']
-    
+
     @classmethod
     def TX_SENT(cls):
         return cls._item_dict['yellow']
-    
+
     @classmethod
     def TX_ACK(cls):
         return cls._item_dict['green']

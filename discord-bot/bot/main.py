@@ -401,6 +401,7 @@ async def debug(interaction: discord.Interaction):
 
 # Callsign Search Command
 @discord_client.tree.command(name="ham", description="Search for a callsign.")
+@discord_client.only_in_channel(discord_client.dis_channel_id)
 async def ham(interaction: discord.Interaction, callsign: str):
     url = f"https://callook.info/{callsign}/json"
     async with aiohttp.ClientSession() as session:
@@ -435,6 +436,7 @@ async def ham(interaction: discord.Interaction, callsign: str):
 
 # returns a map with a marker of a specific node location
 @discord_client.tree.command(name='map', description=f"Lookup node location and display map.")
+@discord_client.only_in_channel(discord_client.dis_channel_id)
 async def get_node_map(interaction: discord.Interaction, node_name: str, map_zoom_level: int = 12):
     logging.info(f'/map command received.')
 
@@ -465,6 +467,16 @@ async def get_node_map(interaction: discord.Interaction, node_name: str, map_zoo
 
     await interaction.response.send_message(embed=embed)
 
+
+@discord_client.tree.command(name="kms", description="Search for a callsign.")
+@discord_client.only_in_channel(discord_client.dis_channel_id)
+async def get_node_map(interaction: discord.Interaction):
+    logging.info(f'/kms command received.')
+    embed = discord.Embed(title=f"Killing Myself", description=f'Cause {interaction.user.mention} told me to', color=MeshBotColors.white())
+    await interaction.response.send_message(embed=embed)
+    await discord_client.close()
+    mesh_client.iface.close()
+
 def run_discord_bot():
     try:
         # TODO could do ble connection BEFORE doing .run
@@ -476,6 +488,8 @@ def run_discord_bot():
     finally:
         if discord_client:
             asyncio.run(discord_client.close())
+        if mesh_client:
+            mesh_client.iface.close()
 
 if __name__ == "__main__":
     run_discord_bot()

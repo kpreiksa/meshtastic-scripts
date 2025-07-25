@@ -31,7 +31,7 @@ class MeshClient():
             if 'from' in packet and packet['from']:
                 from_id = '!' + hex(packet['from'])[2:]
             portnum = packet.get('decoded', {}).get('portnum')
-            
+
             db_packet = RXPacket.from_dict(packet, self)
             self._db_session.add(db_packet)
             self._db_session.commit() # save back to db
@@ -122,7 +122,7 @@ class MeshClient():
     def onDisconnect(self, interface):
         # this happens when a node gets updated... we should update the database
         self.discord_client.enqueue_lost_comm('Disconnect Event Received')
-        logging.error('disconnected')
+        logging.error('mesh device disconnected')
 
     def onNodeUpdated(self, node, interface):
         # this happens when a node gets updated... we should update the database
