@@ -164,49 +164,9 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
     mesh_client.enqueue_send_shortname(node_name, message, discord_interaction_info)
 
 
-def determine_node_id_num_name(node): # TODO move this to mesh_client
-    """Gets an input that could be a node shortname, ID or number, and determines which it is
-    It always returns a node ID
-    """
-    # Regex has 4 options:  node shortname, node ID (starts with !), node ID (starts with 0x), or node number
-    # must convert 0x to !
-    regex = '(^.{1,4}$)|(^![a-zA-Z0-9]{8}$)|(^0x[a-zA-Z0-9]{8}$)|(\\d{1,10}$)'
-
-    matches = re.findall(regex, node)
-    if not matches:
-        logging.error(f'Error: Node input {node} does not match any known formats.')
-    elif len(matches) > 1:
-        logging.error(f'Error: Node input {node} matches multiple formats: {matches}. This is not expected.')
-    else:
-        matches = list(matches[0])
-        # find which one is not empty. matches should be a list of 1 tuple, and the tuple will have 4 elements, all should be empty strings except 1
-        # check if tuple has 3 empty strings and 1 non-empty string
-        empty_str_cnt = matches.count('')
-        if empty_str_cnt == 3:
-            # find index for non-empty string
-            non_empty_index = matches.index(next(filter(lambda x: x != '', matches)))
-            match non_empty_index:
-                case 0:
-                    # node shortname
-                    return 'shortname', node
-                case 1:
-                    # node ID (starts with !)
-                    return 'node_id (!)', node[1:]
-                case 2:
-                    # node ID (starts with 0x)
-                    return 'node_id (0x)', node[2:]
-                case 3:
-                    # node number
-                    return 'nodenum', int(node)
-                case _:
-                    logging.error(f'Error: Node input {node} matches an unexpected format: {matches}. This is not expected.')
-
-        else:
-            logging.error(f'Error: Node input {node} matches multiple formats: {matches}. This is not expected.')
-
-
 # TODO change this to post the message to the channel, create enqueue_send_dm function in mesh_client, move regex logic to that (where lookup is)
-# TODO also enqueue erdits back to discord_client - somethign like enqueue_tx_confirmation
+# TODO also enqueue edits back to discord_client - somethign like enqueue_tx_confirmation
+# TODO consider changing the other send commands to not determine the descriptive string in the command, but rather in the TX confirmation (sent)
 @discord_client.tree.command(name="dm", description="Send a message to a specific node.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def dm(interaction: discord.Interaction, node: str, message: str):
@@ -215,25 +175,16 @@ async def dm(interaction: discord.Interaction, node: str, message: str):
     current_time = get_current_time_str()
 
     # craft message
-
     embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
-    try:
-        node_descriptor = mesh_client.get_node_descriptive_string(shortname=node_name)
-        embed.add_field(name="To Node:", value=f'{mesh_client.get_node_descriptive_string(shortname=node_name)}', inline=False)
-        embed.add_field(name='TX State', value='Pending', inline=False)
-    except:
-        embed.color = MeshBotColors.error()
-        embed.add_field(name="To Node:", value='?', inline=False)
-        embed.add_field(name='TX State', value='Error', inline=False)
-        embed.add_field(name='Error Description', value=f'Node with short name: {node_name} not found.', inline=False)
-
+    embed.add_field(name="To Node:", value=f'{node}', inline=False)
+    embed.add_field(name='TX State', value='Pending', inline=False)
     embed.set_footer(text=f"{current_time}")
     # send message to discord
     out = await interaction.response.send_message(embed=embed)
 
     # queue message to be sent on mesh
     discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
-    mesh_client.enqueue_send_shortname(node_name, message, discord_interaction_info)
+    mesh_client.enqueue_send_dm(node, message, discord_interaction_info)
 
 # Dynamically create commands based on mesh_channel_names
 for mesh_channel_index, mesh_channel_name in config.channel_names.items():

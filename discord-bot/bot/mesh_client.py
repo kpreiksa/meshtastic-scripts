@@ -3,6 +3,7 @@ import logging
 import queue
 import sys
 import time
+import re
 
 from datetime import datetime
 
@@ -237,6 +238,50 @@ class MeshClient():
 
         return default
 
+    def determine_node_id_num_name(self, node):
+        """Gets an input that could be a node shortname, ID or number, and determines which it is
+        It always returns a node ID
+        It does not check if the node ID/short name is valid, just that it is in the correct format.
+        """
+        # Regex has 4 options:  node shortname, node ID (starts with !), node ID (starts with 0x), or node number
+        # must convert 0x to !
+        regex = '(^.{1,4}$)|(^![a-zA-Z0-9]{8}$)|(^0x[a-zA-Z0-9]{8}$)|(\\d{1,10}$)'
+
+        matches = re.findall(regex, node)
+        if not matches:
+            logging.error(f'Error: Node input {node} does not match any known formats.')
+            return None, 'node_num', None
+        elif len(matches) > 1:
+            logging.error(f'Error: Node input {node} matches multiple formats: {matches}. This is not expected.')
+            return None, 'node_num', None
+        else:
+            matches = list(matches[0])
+            # find which one is not empty. matches should be a list of 1 tuple, and the tuple will have 4 elements, all should be empty strings except 1
+            # check if tuple has 3 empty strings and 1 non-empty string
+            empty_str_cnt = matches.count('')
+            if empty_str_cnt == 3:
+                # find index for non-empty string
+                non_empty_index = matches.index(next(filter(lambda x: x != '', matches)))
+                match non_empty_index:
+                    case 0:
+                        # node shortname
+                        return 'send_shortname', 'shortname', node
+                    case 1:
+                        # node ID (starts with !)
+                        return 'send_nodeid', 'nodeid', node
+                    case 2:
+                        # node ID (starts with 0x)
+                        return 'send_nodeid', 'nodeid', '!'+node[2:]
+                    case 3:
+                        # node number
+                        return 'send_nodenum', 'nodenum', int(node)
+                    case _:
+                        logging.error(f'Error: Node input {node} matches an unexpected format: {matches}. This is not expected.')
+                        return None, 'node_num', None
+            else:
+                logging.error(f'Error: Node input {node} matches multiple formats: {matches}. This is not expected.')
+                return None, 'node_num', None
+
     def get_node_info(self, node_id=None, nodenum=None, shortname=None, longname=None):
         if node_id:
             if not node_id.startswith('!'):
@@ -451,7 +496,7 @@ class MeshClient():
         Puts a message on the queue to be sent to a specific node (DM) by node number.
 
         Args:
-            nodenum: Node to DM.
+            nodenum: Node num to DM.
             message: Message text to send.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
@@ -470,7 +515,7 @@ class MeshClient():
         Puts a message on the queue to be sent to a specific node (DM) by ID.
 
         Args:
-            nodeid: Node to DM.
+            nodeid: Node ID to DM.
             message: Message text to send.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
@@ -489,16 +534,35 @@ class MeshClient():
         Puts a message on the queue to be sent to a specific node (DM) by short name.
 
         Args:
-            nodeid: Node to DM.
+            shortname: shortname of Node to DM.
             message: Message text to send.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
-
-
+        # TODO determine if we should use id?
         self._enqueue_msg(
             {
                 'msg_type': 'send_shortname',
                 'shortname': shortname,
+                'message': message,
+                'discord_interaction_info': discord_interaction_info,
+            }
+        )
+
+    def enqueue_send_dm(self, node, message, discord_interaction_info):
+        """
+        Puts a message on the queue to be sent to a specific node (DM).
+
+        Args:
+            nodeid: Node to DM.
+            message: Message text to send.
+            discord_interaction_info: Information about discord message to fascilitate replies.
+        """
+        msg_type, node_type, node = self.determine_node_id_num_name(node)
+
+        self._enqueue_msg(
+            {
+                'msg_type': msg_type,
+                node_type: node,
                 'message': message,
                 'discord_interaction_info': discord_interaction_info,
             }
@@ -698,8 +762,7 @@ class MeshClient():
             elif msg_type == 'send_shortname':
                 shortname = msg.get('shortname')
                 nodenum = self.get_node_num(shortname=shortname)
-                # TODO: If we did not get a nodenum back... respond to the original message with a
-                # descriptive error
+                # TODO: If we did not get a nodenum back... respond to the original message with a descriptive error
                 self._send_dm(nodenum, message, discord_interaction_info)
             elif msg_type == 'telemetry_broadcast':
                 # TODO: Add ability to send on other channels if this even makes sense

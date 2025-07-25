@@ -41,7 +41,7 @@ class DiscordBot(discord.Client):
 
     def enqueue_msg(self, msg):
         self._discordqueue.put(msg)
-        
+
     def enqueue_ack(self, ack_obj):
         self._enqueue_mesh_response({
             'msg_type': 'ACK',
@@ -54,9 +54,9 @@ class DiscordBot(discord.Client):
             'is_implicit': ack_obj.implicit_ack,
             'ack_error_reason': ack_obj.ack_packet.error_reason
         })
-        
+
     def enqueue_mesh_text_msg_received(self, packet):
-        
+
         mesh_channel_index = packet.channel
         if mesh_channel_index is None:
             mesh_channel_index = 0
@@ -72,7 +72,7 @@ class DiscordBot(discord.Client):
             hops = "?"
             if not packet.hop_limit:
                 hop_start = "?"
-        
+
         embed = discord.Embed(title="Message Received", description=packet.text, color=util.MeshBotColors.RX())
         embed.add_field(name="From Node", value=packet.src_descriptive, inline=False)
         embed.add_field(name="RxSNR / RxRSSI", value=f"{packet.rx_snr_str} / {packet.rx_rssi_str}", inline=True)
@@ -103,20 +103,20 @@ class DiscordBot(discord.Client):
             color=util.MeshBotColors.error()
         )
         self.enqueue_msg(embed)
-                            
+
     def enqueue_lost_comm(self, exception_obj):
         embed = discord.Embed(title="Lost Comm", description=f'Lost Comm: {str(exception_obj)}', color=util.MeshBotColors.error())
         current_time = util.get_current_time_str()
         embed.set_footer(text=f"{current_time}")
         self.enqueue_msg(embed)
-        
+
     def enqueue_tx_error(self, discord_message_id, error_text):
         self._enqueue_mesh_response({
             'msg_type': 'TX_ERROR',
             'discord_message_id': discord_message_id,
             'error_text': error_text,
         })
-        
+
     def enqueue_tx_confirmation(self, discord_message_id):
         self._enqueue_mesh_response({
             'msg_type': 'TX_CONFIRMATION',
@@ -125,44 +125,44 @@ class DiscordBot(discord.Client):
 
     def _enqueue_mesh_response(self, msg):
         self._meshresponsequeue.put(msg)
-        
+
     async def process_mesh_response(self, msg):
         msg_type = msg.get('msg_type')
-        
+
         if msg_type == 'ACK':
-            
+
             logging.info(f'Response message: ACK received')
-        
+
             msg_id = msg.get('discord_message_id')
             if msg_id is None:
                 logging.error('No discord_message_id found in mesh response (probably an ACK from self, on a message sent to a channel), skipping message update')
                 return
-            
+
             ack_by_id = msg.get('response_from_id')
 
             message = await self.channel.fetch_message(msg_id)
-            
+
             ack_time_str = f'ACK Time: {util.get_current_time_str()}'
-            
+
             is_implicit = msg.get('is_implicit', True)
-            
+
             # TODO: Figure out what the different ACK errors mean
             ack_error = msg.get('ack_error_reason')
             # ack_error = ack_error if ack_error != 'NONE' else None
-            
+
             ack_str = f'Acknowledged - Error Reason: {ack_error}' if ack_error else 'Acknowledged'
-            
+
             ack_text = f'{ack_str} (Implicit)' if is_implicit else f'{ack_str} (Explicit)'
-            
+
             rx_rssi = msg.get('response_rx_rssi')
             rx_snr = msg.get('response_rx_snr')
             signal_metrics_available = rx_rssi is not None and rx_snr is not None
             hop_start = msg.get('response_hop_start')
             hop_limit = msg.get('response_hop_limit')
-            
+
             ack_text_2 = []
-            
-            
+
+
             if is_implicit:
                 ack_text_2.append('**ACK Type:**: Implicit')
                 # if ack_error:
@@ -172,56 +172,57 @@ class DiscordBot(discord.Client):
                 # if ack_error:
                 ack_text_2.append(f'**Error Reason:** {ack_error}')
                 ack_text_2.append(f'**Node:**: {self.mesh_client.get_node_descriptive_string(node_id=ack_by_id)}')
-            
+
             if signal_metrics_available:
                 ack_text_2.append(f'**RSSI/SNR:** {rx_rssi}/{rx_snr}')
-                
+
             ack_text_2.append(f'**Hop Start/Limit:** {hop_start}/{hop_limit}')
-                
+
 
             e = message.embeds[0]
             e.color = util.MeshBotColors.TX_ACK()
             e.set_field_at(1, name='TX State', value=ack_text)
             e.add_field(name='ACK Info', value='\n'.join(ack_text_2), inline=False)
             await message.edit(embed=e)
-            
+
         elif msg_type == 'TX_CONFIRMATION':
-            
+
             logging.info(f'Response message: TX_CONFIRMATION received')
-            
+
             msg_id = msg.get('discord_message_id')
             if msg_id is None:
                 logging.error('No discord_message_id found in mesh response.')
                 return
-            
+
             message = await self.channel.fetch_message(msg_id)
-            
+
             # modify the original message
             e = message.embeds[0]
             e.color = util.MeshBotColors.TX_SENT()
             e.set_field_at(1, name='TX State', value='Sent')
+            # TODO use set_field_at to update the name of the node
             await message.edit(embed=e)
-            
+
         elif msg_type == 'TX_ERROR':
-            
+
             logging.info(f'Response message: TX_ERROR received')
-            
+
             msg_id = msg.get('discord_message_id')
             if msg_id is None:
                 logging.error('No discord_message_id found in mesh response.')
                 return
-            
+
             error_text = msg.get('error_text')
-            
+
             message = await self.channel.fetch_message(msg_id)
-            
+
             # modify the original message
             e = message.embeds[0]
             e.color = util.MeshBotColors.error()
             e.set_field_at(1, name='TX State', value='Error')
             e.add_field(name='Error Description', value=error_text, inline=False)
             await message.edit(embed=e)
-            
+
     async def background_task(self):
         await self.wait_until_ready()
         counter = 0
