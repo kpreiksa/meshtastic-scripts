@@ -260,10 +260,21 @@ async def active(interaction: discord.Interaction, node_id: str):
             alt_m = latest_position_packet.altitude
             alt_ft = round(alt_m * 3.281, 0)
             
+            location_source = latest_position_packet.location_source
+            pdop = latest_position_packet.pdop
+            ground_speed = latest_position_packet.ground_speed
+            sats_in_view = latest_position_packet.sats_in_view
+            precision_bits = latest_position_packet.precision_bits
+            
             url = f'https://www.google.com/maps/search/?api=1&query={lat},{lon}'
             
             position_info.append(f'**Position:** [{round(lat,3)},{round(lon,3)}]({url})')
             position_info.append(f'**Altitude:** {alt_m}m ({alt_ft}ft)')
+            position_info.append(f'**Location Source:** {location_source}')
+            position_info.append(f'**PDOP:** {pdop}')
+            position_info.append(f'**Ground Speed:** {ground_speed}')
+            position_info.append(f'**Sats In View:** {sats_in_view}')
+            position_info.append(f'**Precision Bits:** {precision_bits}')
             position_info.append(f'**Position Timestamp:** {time_str_from_dt(latest_position_packet.ts)}')
             
         # get most recent position packet
