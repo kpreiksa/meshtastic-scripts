@@ -1,6 +1,32 @@
 from datetime import datetime
 import discord
 
+def uptime_str(sec):
+    if sec is None:
+        return 'Not Available'
+    
+    days = sec // 86400
+    sec_rem = sec - (days * 86400)
+    hours = sec_rem // 3600
+    sec_rem = sec_rem - (hours * 3600)
+    min = sec_rem // 60
+    sec_rem = sec_rem - (min * 60)
+    
+    out = ''
+    
+    if days > 0:
+        out += f'{days} days, '
+        
+    if hours > 0:
+        out += f'{hours} hours, '
+        
+    if min > 0:
+        out += f'{min} minutes, '
+        
+    out += f'{sec_rem} seconds.'
+    return out
+        
+
 class DiscordInteractionInfo():
     """
     Everything needed to uniquely identify a message for purposes of responding to it

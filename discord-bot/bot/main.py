@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import aiohttp
-from datetime import datetime
+import datetime
 import discord
 from discord import ButtonStyle
 from discord.ui import View, Button
@@ -12,12 +12,12 @@ from pprint import pprint
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import db_base
+import db_classes
 from functools import wraps
-
 from config_classes import Config
 from mesh_client import MeshClient
 from discord_client import DiscordBot
-from util import get_current_time_str
+from util import get_current_time_str, uptime_str, time_from_ts
 from util import MeshBotColors, DiscordInteractionInfo
 
 # other params?
@@ -60,7 +60,6 @@ mesh_client = MeshClient(db_session=session, config=config) # create the mesh cl
 discord_client = DiscordBot(mesh_client, config, intents=discord.Intents.default())
 
 # discord commands
-
 @discord_client.tree.command(name="help", description="Shows the help message.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def help_command(interaction: discord.Interaction):
@@ -133,7 +132,6 @@ async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
 
     mesh_client.enqueue_send_nodenum(nodenum, message, discord_interaction_info)
 
-
 @discord_client.tree.command(name="send_shortname", description="Send a message to a specific node.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def send_shortname(interaction: discord.Interaction, node_name: str, message: str):
@@ -181,16 +179,16 @@ for mesh_channel_index, mesh_channel_name in config.channel_names.items():
         mesh_client.enqueue_send_channel(mesh_channel_index, message, discord_interaction_info=discord_interaction_info)
 
 
-@discord_client.tree.command(name="traceroute", description="Traceroute a node.")
-@discord_client.only_in_channel(discord_client.dis_channel_id)
-async def run_traceroute(interaction: discord.Interaction, node_id: str):
-    await interaction.response.defer()
+# @discord_client.tree.command(name="traceroute", description="Traceroute a node.")
+# @discord_client.only_in_channel(discord_client.dis_channel_id)
+# async def run_traceroute(interaction: discord.Interaction, node_id: str):
+#     await interaction.response.defer()
 
-    logging.info(f'/traceroute received.')
-    mesh_client.enqueue_traceroute(node_id)
-    await asyncio.sleep(0.1)
+#     logging.info(f'/traceroute received.')
+#     mesh_client.enqueue_traceroute(node_id)
+#     await asyncio.sleep(0.1)
 
-    await interaction.delete_original_response()
+#     await interaction.delete_original_response()
 
 @discord_client.tree.command(name="active", description="Lists all active nodes.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
@@ -202,48 +200,138 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
     await asyncio.sleep(0.1)
 
     await interaction.delete_original_response()
+    
+@discord_client.tree.command(name="db_nodeinfo", description="Gets info for a node from the database")
+@discord_client.only_in_channel(discord_client.dis_channel_id)
+async def active(interaction: discord.Interaction, node_id: str):
+    
+    logging.info(f'/db_nodeinfo received, doing query for node ID: {node_id}')
+    current_time = get_current_time_str()
+    
+    embed = discord.Embed(title=f"Node Info", description=f'From DB for Node: {node_id}', color=MeshBotColors.violet())
+    
+    n = mesh_client.get_node_num(node_id=node_id)
+    
+    # convert id to num to look up node 
+    matching_nodes = mesh_client._db_session.query(db_classes.MeshNodeDB).filter(db_classes.MeshNodeDB.node_num == n).all()
+    if len(matching_nodes) > 1:
+        embed.color = MeshBotColors.error()
+        embed.add_field(name='Error', value=f'More than 1 node matching ID: {node_id}')
+    elif len(matching_nodes) == 0:
+        embed.color = MeshBotColors.error()
+        embed.add_field(name='Error', value=f'No node matching ID: {node_id}')
+    else:
+        node_info = []
+        matching_node = matching_nodes[0]
+        matching_packets = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).all()
+        txt_message_packets = [x for x in matching_packets if x.portnum == 'TEXT_MESSAGE_APP']
+        telemetry_packets = [x for x in matching_packets if x.portnum == 'TELEMETRY_APP']
+        position_packets = [x for x in matching_packets if x.portnum == 'POSITION_APP']
+        nodeinfo_packets = [x for x in matching_packets if x.portnum == 'NODEINFO_APP']
+        
+        node_info.append(f"**Cnt Packets RX'd:** {len(matching_packets)}")
+        node_info.append(f"**Cnt TEXT_MESSAGE_APP RX'd:** {len(txt_message_packets)}")
+        node_info.append(f"**Cnt TELEMETRY_APP RX'd:** {len(telemetry_packets)}")
+        node_info.append(f"**Cnt POSITION_APP RX'd:** {len(position_packets)}")
+        node_info.append(f"**Cnt NODEINFO_APP RX'd:** {len(nodeinfo_packets)}")
+        
+        if matching_node.hw_model is not None:
+            node_info.append(f'**HW Model:** {matching_node.hw_model}')
+        if matching_node.upd_ts_nodedb is not None:
+            node_info.append(f'**Last Update (Node DB):** {matching_node.upd_ts_nodedb.strftime('%d %B %Y %I:%M:%S %p')}')
+        if matching_node.upd_ts_nodeinfo is not None:
+            node_info.append(f'**Last Update (Node Info):** {matching_node.upd_ts_nodeinfo.strftime('%d %B %Y %I:%M:%S %p')}')
+            
+        node_info_str = '\n'.join(node_info)
+        embed.add_field(name=matching_node.descriptive_name, value=node_info_str, inline=False)
 
-# This crashes and says the target node needs a newer firmware version. But all nodes have a new firmware version
-# and it still crashes
-# @discord_client.tree.command(name="telemetry_exchange", description="Request telemetry exchange.")
+
+    out = await interaction.response.send_message(embed=embed)
+    
+# TODO: Rewrite to send chunked messages
+# @discord_client.tree.command(name="db_active", description="Lists all active nodes in the database")
 # @discord_client.only_in_channel(discord_client.dis_channel_id)
-# async def telemetry_exchange(interaction: discord.Interaction, node_num: str = None, node_id: str = None, node_shortname: str = None):
-#     logging.info(f'/telemetry command received. node_num: {node_num}. node_id: {node_id}. node_shortname: {node_shortname}.')
-
+# async def active(interaction: discord.Interaction, active_time: str='30'):
+    
+#     logging.info(f'/db_active received, doing query with time: {active_time}')
 #     current_time = get_current_time_str()
+    
+#     embed = discord.Embed(title=f"Active Node Info", description=f'From DB with time: {active_time}', color=MeshBotColors.violet())
+    
+#     active_after = datetime.datetime.now() - datetime.timedelta(minutes=int(active_time))
+    
+#     matching_nodes = mesh_client._db_session.query(db_classes.MeshNodeDB).filter(db_classes.MeshNodeDB.last_heard_nodeinfo >= active_after).all()
+#     for matching_node in matching_nodes:
+#         node_info = []
+#         # get count of packets from RX DB
+#         matching_packets = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).all()
+#         # count the packets
+        
+#         if matching_node.user_hw_model is not None:
+#             node_info.append(f'**HW Model:** {matching_node.user_hw_model}')
+#         if matching_node.last_heard_packet is not None:
+#             node_info.append(f'**Last Heard:** {matching_node.last_heard_packet.strftime('%d %B %Y %I:%M:%S %p')}')
+#         node_info.append(f'**Cnt Packets RXd:** {len(matching_packets)}')
+#         # if matching_node.last_heard_nodeinfo is not None:
+#         #     node_info.append(f'**Last Heard (NodeInfo):** {matching_node.last_heard_nodeinfo.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_telemetry_air_quality_metrics is not None:
+#         #     node_info.append(f'**Last Heard (Telemetry - Air Quality):** {matching_node.last_heard_telemetry_air_quality_metrics.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_telemetry_device_metrics is not None:
+#         #     node_info.append(f'**Last Heard (Telemetry - Device Metrics):** {matching_node.last_heard_telemetry_device_metrics.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_telemetry_environment_metrics is not None:
+#         #     node_info.append(f'**Last Heard (Telemetry - Environment Metrics):** {matching_node.last_heard_telemetry_environment_metrics.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_telemetry_power_metrics is not None:
+#         #     node_info.append(f'**Last Heard (Telemetry - Power Metrics):** {matching_node.last_heard_telemetry_power_metrics.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_text_message is not None:
+#         #     node_info.append(f'**Last Heard (Text Message):** {matching_node.last_heard_text_message.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_position is not None:
+#         #     node_info.append(f'**Last Heard (Position):** {matching_node.last_heard_position.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_routing is not None:
+#         #     node_info.append(f'**Last Heard (Routing):** {matching_node.last_heard_routing.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_admin is not None:
+#         #     node_info.append(f'**Last Heard (Admin):** {matching_node.last_heard_admin.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_waypoint is not None:
+#         #     node_info.append(f'**Last Heard (Waypoint):** {matching_node.last_heard_waypoint.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_paxcounter is not None:
+#         #     node_info.append(f'**Last Heard (PAXCounter):** {matching_node.last_heard_paxcounter.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_store_forward is not None:
+#         #     node_info.append(f'**Last Heard (Store-Forward):** {matching_node.last_heard_store_forward.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_range_test is not None:
+#         #     node_info.append(f'**Last Heard (Range Test):** {matching_node.last_heard_range_test.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_traceroute is not None:
+#         #     node_info.append(f'**Last Heard (Traceroute):** {matching_node.last_heard_traceroute.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_neighbor_info is not None:
+#         #     node_info.append(f'**Last Heard (Neighbor Info):** {matching_node.last_heard_neighbor_info.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.last_heard_atak is not None:
+#         #     node_info.append(f'**Last Heard (ATAK):** {matching_node.last_heard_atak.strftime('%d %B %Y %I:%M:%S %p')}')
+#         # if matching_node.snr_nodedb is not None:
+#         #     node_info.append(f'**Last Heard SNR:** {matching_node.snr_nodedb}')
+#         # if matching_node.hops_away_nodedb is not None:
+#         #     node_info.append(f'**Last Heard Hops Away:** {matching_node.hops_away_nodedb}')
+#         # if matching_node.pos_latitude is not None and matching_node.pos_longitude is not None:
+#         #     node_info.append(f'**Location:** {matching_node.pos_latitude},{matching_node.pos_longitude}')
+#         # if matching_node.pos_altitude is not None:
+#         #     node_info.append(f'**Altitude:** {matching_node.pos_altitude} m ({round(matching_node.pos_altitude*3.281, 0)} ft)')
+#         # if matching_node.pos_location_source is not None:
+#         #     node_info.append(f'**Location Source:** {matching_node.pos_location_source}')
+#         # if matching_node.device_metrics_uptime_seconds is not None:
+#         #     node_info.append(f'**Uptime:** {uptime_str(matching_node.device_metrics_uptime_seconds)}')
+#         # if matching_node.device_metrics_channel_utilization is not None:
+#         #     node_info.append(f'**Channel Utilization:** {round(matching_node.device_metrics_channel_utilization, 1)}')
+#         # if matching_node.device_metrics_voltage is not None:
+#         #     node_info.append(f'**Node Voltage:** {round(matching_node.device_metrics_voltage, 2)}')
+#         # if matching_node.device_metrics_battery_level is not None:
+#         #     node_info.append(f'**Node Battery Level:** {matching_node.device_metrics_battery_level}')
+#         if matching_node.upd_ts is not None:
+#             node_info.append(f'**Last Update:** {matching_node.upd_ts.strftime('%d %B %Y %I:%M:%S %p')}')
+#         if matching_node.last_update_src is not None:
+#             node_info.append(f'**Last Update Source:** {matching_node.last_update_src}')
+            
+#         node_info_str = '\n'.join(node_info)
+#         embed.add_field(name=matching_node.descriptive_name, value=node_info_str, inline=False)
 
-#     embed = discord.Embed(title="Sending Telemetry Request", color=MeshBotColors.TX_PENDING())
-#     embed.set_footer(text=f"{current_time}")
 
-#     if not node_id and not node_num and not node_shortname:
-#         embed.add_field(name='Error Description', value=f'One of node_num, node_id, or node_shortname must be specified.', inline=False)
-#         return
-
-#     try:
-#         node_descriptor = mesh_client.get_node_descriptive_string(node_id=node_id, nodenum=node_num, shortname=node_shortname)
-#         embed.add_field(name="To Node:", value=f'{node_descriptor}', inline=False)
-#         embed.add_field(name='TX State', value='Error', inline=False)
-#     except Exception as e:
-
-#         embed.add_field(name='Error Description', value=f'Node with short name: {node_shortname} not found.', inline=False)
-#         embed.color = MeshBotColors.error()
-
-#     # send message to discord
 #     out = await interaction.response.send_message(embed=embed)
-
-#     discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id, interaction.user.id, interaction.user.display_name, interaction.user.global_name, interaction.user.name, interaction.user.mention)
-#     if node_num:
-#         logging.info(f'Sending telemetry request to nodenum: {node_num}')
-#         mesh_client.enqueue_telemetry_nodenum(node_num, discord_interaction_info)
-#     elif node_id:
-#         logging.info(f'Sending telemetry request to node_id: {node_id}')
-#         mesh_client.enqueue_telemetry_nodeid(node_id, discord_interaction_info)
-#     elif node_shortname:
-#         logging.info(f'Sending telemetry request to shortname: {node_shortname}')
-#         mesh_client.enqueue_telemetry_shortname(node_shortname, discord_interaction_info)
-#     # else:
-#     #     logging.info(f'Sending telemetry request to broadcast.')
-#     #     mesh_client.enqueue_telemetry_broadcast(discord_interaction_info)
 
 
 @discord_client.tree.command(name="self", description="Lists info about directly connected node.")
@@ -261,7 +349,6 @@ async def describe_self(interaction: discord.Interaction):
 
     embed = discord.Embed(title='Local Node Information', description='\n'.join(text))
     await interaction.response.send_message(embed=embed)
-
 
 @discord_client.tree.command(name="all_nodes", description="Lists all nodes.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
@@ -286,7 +373,7 @@ async def debug(interaction: discord.Interaction):
         ts = int(lastheard)
         # if ts > time.time() - (time_limit * 60): # Only include if its less then time_limit
         timezone = pytz.timezone(config.time_zone)
-        local_time = datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(timezone)
+        local_time = datetime.datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(timezone)
         timestr = local_time.strftime('%d %B %Y %I:%M:%S %p')
     else:
         timestr = '???'
@@ -394,6 +481,7 @@ def run_discord_bot():
         # TODO could do ble connection BEFORE doing .run
         # could also add logic into __init__
         discord_client.run(config.discord_bot_token)
+        discord_client.close()
     except Exception as e:
         logging.error(f"An error occurred while running the bot: {e}")
     finally:
