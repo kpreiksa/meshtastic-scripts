@@ -80,6 +80,9 @@ def get_current_time_str():
 def time_from_ts(ts):
     return datetime.fromtimestamp(ts).strftime('%d %B %Y %I:%M:%S %p')
 
+def time_str_from_dt(dt):
+    return dt.strftime('%d %B %Y %I:%M:%S %p')
+    
 class MeshBotColors():
     _item_dict = {
         'green': 0x67ea94,

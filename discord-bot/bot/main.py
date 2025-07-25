@@ -17,7 +17,7 @@ from functools import wraps
 from config_classes import Config
 from mesh_client import MeshClient
 from discord_client import DiscordBot
-from util import get_current_time_str, uptime_str, time_from_ts
+from util import get_current_time_str, uptime_str, time_from_ts, time_str_from_dt
 from util import MeshBotColors, DiscordInteractionInfo
 
 # other params?
@@ -73,6 +73,7 @@ async def help_command(interaction: discord.Interaction):
                 "`/sendnum` - Send a message to another node.\n"
                 "`/active` - Shows all active nodes. Default is 61\n"
                 "`/all_nodes` - Shows all nodes. WARNING: Potentially a lot of messages\n"
+                "`/nodeinfo` - Get detailed nodeinfo from DB for node.\n"
                 "`/help` - Shows this help message.\n"
                 "`/debug` - Shows information this bot's mesh node\n"
                 "`/ham` - Look up callsign for ham operator\n"
@@ -196,16 +197,22 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
     await interaction.response.defer()
 
     logging.info(f'/active received, sending to queue with time: {active_time}')
-    mesh_client.enqueue_active_nodes(active_time=active_time)
+    
     await asyncio.sleep(0.1)
-
+    
+    chunks = mesh_client.get_nodes_from_db(time_limit=active_time)
+    if discord_client:
+        for chunk in chunks:
+            discord_client.enqueue_msg(chunk)
+            
     await interaction.delete_original_response()
     
-@discord_client.tree.command(name="db_nodeinfo", description="Gets info for a node from the database")
+    
+@discord_client.tree.command(name="nodeinfo", description="Gets info for a node from the database")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def active(interaction: discord.Interaction, node_id: str):
     
-    logging.info(f'/db_nodeinfo received, doing query for node ID: {node_id}')
+    logging.info(f'/nodeinfo received, doing query for node ID: {node_id}')
     current_time = get_current_time_str()
     
     embed = discord.Embed(title=f"Node Info", description=f'From DB for Node: {node_id}', color=MeshBotColors.violet())
@@ -222,12 +229,16 @@ async def active(interaction: discord.Interaction, node_id: str):
         embed.add_field(name='Error', value=f'No node matching ID: {node_id}')
     else:
         node_info = []
+        position_info = []
+        device_info = []
+        env_info = []
         matching_node = matching_nodes[0]
         matching_packets = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).all()
         portnums = list(set([x.portnum for x in matching_packets]))
         
+        node_info.append(f"**Node ID/Name:** {matching_node.descriptive_name}")
         node_info.append(f"**Cnt Packets RX'd:** {len(matching_packets)}")
-        
+    
         for portnum in portnums:
             portnum_packets = [x for x in matching_packets if x.portnum == portnum]
             node_info.append(f"\t**{portnum}:** {len(portnum_packets)}")
@@ -235,102 +246,64 @@ async def active(interaction: discord.Interaction, node_id: str):
         if matching_node.hw_model is not None:
             node_info.append(f'**HW Model:** {matching_node.hw_model}')
         if matching_node.upd_ts_nodedb is not None:
-            t_str = matching_node.upd_ts_nodedb.strftime('%d %B %Y %I:%M:%S %p')
+            t_str = time_str_from_dt(matching_node.upd_ts_nodedb) 
             node_info.append(f'**Last Update (Node DB):** {t_str}')
         if matching_node.upd_ts_nodeinfo is not None:
-            t_str = matching_node.upd_ts_nodeinfo.strftime('%d %B %Y %I:%M:%S %p')
+            t_str = time_str_from_dt(matching_node.upd_ts_nodeinfo)
             node_info.append(f'**Last Update (Node Info):** {t_str}')
             
+        # get most recent position packet
+        latest_position_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.portnum == 'POSITION_APP').order_by(db_classes.RXPacket.ts.desc()).first()
+        if latest_position_packet:
+            lat = latest_position_packet.latitude
+            lon = latest_position_packet.longitude
+            alt_m = latest_position_packet.altitude
+            alt_ft = round(alt_m * 3.281, 0)
+            
+            url = f'https://www.google.com/maps/search/?api=1&query={lat},{lon}'
+            
+            position_info.append(f'**Position:** [{round(lat,3)},{round(lon,3)}]({url})')
+            position_info.append(f'**Altitude:** {alt_m}m ({alt_ft}ft)')
+            position_info.append(f'**Position Timestamp:** {time_str_from_dt(latest_position_packet.ts)}')
+            
+        # get most recent position packet
+        latest_device_metrics_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.portnum == 'TELEMETRY_APP').filter(db_classes.RXPacket.has_device_metrics == True).order_by(db_classes.RXPacket.ts.desc()).first()
+        if latest_device_metrics_packet:
+            device_metrics = latest_device_metrics_packet.telemetry_device_metrics
+            # this will be JSON
+            if device_metrics:
+                battery = device_metrics.get('batteryLevel')
+                voltage = device_metrics.get('voltage')
+                device_info.append(f'**Battery Level:** {battery} ({voltage})v')
+                device_info.append(f'**Device Metrics Timestamp:** {time_str_from_dt(latest_device_metrics_packet.ts)}')
+                
+        latest_environment_metrics_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.portnum == 'TELEMETRY_APP').filter(db_classes.RXPacket.has_environment_metrics == True).order_by(db_classes.RXPacket.ts.desc()).first()
+        if latest_environment_metrics_packet:
+            env_metrics = latest_environment_metrics_packet.telemetry_environment_metrics
+            # this will be JSON
+            if env_metrics:
+                temp = env_metrics.get('temperature')
+                env_info.append(f'**Battery Level:** {temp}')
+                env_info.append(f'**Environment Metrics Timestamp:** {time_str_from_dt(latest_environment_metrics_packet.ts)}')
+            
         node_info_str = '\n'.join(node_info)
-        embed.add_field(name=matching_node.descriptive_name, value=node_info_str, inline=False)
+        embed.add_field(name='Node Info', value=node_info_str, inline=False)
+        
+        if position_info:
+            position_info_str = '\n'.join(position_info)
+            embed.add_field(name='Position Info', value=position_info_str, inline=False)
+        
+        if device_info:
+            device_info_str = '\n'.join(device_info)
+            embed.add_field(name='Device Metrics', value=device_info_str, inline=False)
+            
+        if env_info:
+            env_info_str = '\n'.join(env_info)
+            embed.add_field(name='Environmental Metrics', value=env_info_str, inline=False)
 
 
     out = await interaction.response.send_message(embed=embed)
     
-# TODO: Rewrite to send chunked messages
-# @discord_client.tree.command(name="db_active", description="Lists all active nodes in the database")
-# @discord_client.only_in_channel(discord_client.dis_channel_id)
-# async def active(interaction: discord.Interaction, active_time: str='30'):
-    
-#     logging.info(f'/db_active received, doing query with time: {active_time}')
-#     current_time = get_current_time_str()
-    
-#     embed = discord.Embed(title=f"Active Node Info", description=f'From DB with time: {active_time}', color=MeshBotColors.violet())
-    
-#     active_after = datetime.datetime.now() - datetime.timedelta(minutes=int(active_time))
-    
-#     matching_nodes = mesh_client._db_session.query(db_classes.MeshNodeDB).filter(db_classes.MeshNodeDB.last_heard_nodeinfo >= active_after).all()
-#     for matching_node in matching_nodes:
-#         node_info = []
-#         # get count of packets from RX DB
-#         matching_packets = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).all()
-#         # count the packets
-        
-#         if matching_node.user_hw_model is not None:
-#             node_info.append(f'**HW Model:** {matching_node.user_hw_model}')
-#         if matching_node.last_heard_packet is not None:
-#             node_info.append(f'**Last Heard:** {matching_node.last_heard_packet.strftime('%d %B %Y %I:%M:%S %p')}')
-#         node_info.append(f'**Cnt Packets RXd:** {len(matching_packets)}')
-#         # if matching_node.last_heard_nodeinfo is not None:
-#         #     node_info.append(f'**Last Heard (NodeInfo):** {matching_node.last_heard_nodeinfo.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_telemetry_air_quality_metrics is not None:
-#         #     node_info.append(f'**Last Heard (Telemetry - Air Quality):** {matching_node.last_heard_telemetry_air_quality_metrics.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_telemetry_device_metrics is not None:
-#         #     node_info.append(f'**Last Heard (Telemetry - Device Metrics):** {matching_node.last_heard_telemetry_device_metrics.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_telemetry_environment_metrics is not None:
-#         #     node_info.append(f'**Last Heard (Telemetry - Environment Metrics):** {matching_node.last_heard_telemetry_environment_metrics.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_telemetry_power_metrics is not None:
-#         #     node_info.append(f'**Last Heard (Telemetry - Power Metrics):** {matching_node.last_heard_telemetry_power_metrics.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_text_message is not None:
-#         #     node_info.append(f'**Last Heard (Text Message):** {matching_node.last_heard_text_message.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_position is not None:
-#         #     node_info.append(f'**Last Heard (Position):** {matching_node.last_heard_position.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_routing is not None:
-#         #     node_info.append(f'**Last Heard (Routing):** {matching_node.last_heard_routing.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_admin is not None:
-#         #     node_info.append(f'**Last Heard (Admin):** {matching_node.last_heard_admin.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_waypoint is not None:
-#         #     node_info.append(f'**Last Heard (Waypoint):** {matching_node.last_heard_waypoint.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_paxcounter is not None:
-#         #     node_info.append(f'**Last Heard (PAXCounter):** {matching_node.last_heard_paxcounter.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_store_forward is not None:
-#         #     node_info.append(f'**Last Heard (Store-Forward):** {matching_node.last_heard_store_forward.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_range_test is not None:
-#         #     node_info.append(f'**Last Heard (Range Test):** {matching_node.last_heard_range_test.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_traceroute is not None:
-#         #     node_info.append(f'**Last Heard (Traceroute):** {matching_node.last_heard_traceroute.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_neighbor_info is not None:
-#         #     node_info.append(f'**Last Heard (Neighbor Info):** {matching_node.last_heard_neighbor_info.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.last_heard_atak is not None:
-#         #     node_info.append(f'**Last Heard (ATAK):** {matching_node.last_heard_atak.strftime('%d %B %Y %I:%M:%S %p')}')
-#         # if matching_node.snr_nodedb is not None:
-#         #     node_info.append(f'**Last Heard SNR:** {matching_node.snr_nodedb}')
-#         # if matching_node.hops_away_nodedb is not None:
-#         #     node_info.append(f'**Last Heard Hops Away:** {matching_node.hops_away_nodedb}')
-#         # if matching_node.pos_latitude is not None and matching_node.pos_longitude is not None:
-#         #     node_info.append(f'**Location:** {matching_node.pos_latitude},{matching_node.pos_longitude}')
-#         # if matching_node.pos_altitude is not None:
-#         #     node_info.append(f'**Altitude:** {matching_node.pos_altitude} m ({round(matching_node.pos_altitude*3.281, 0)} ft)')
-#         # if matching_node.pos_location_source is not None:
-#         #     node_info.append(f'**Location Source:** {matching_node.pos_location_source}')
-#         # if matching_node.device_metrics_uptime_seconds is not None:
-#         #     node_info.append(f'**Uptime:** {uptime_str(matching_node.device_metrics_uptime_seconds)}')
-#         # if matching_node.device_metrics_channel_utilization is not None:
-#         #     node_info.append(f'**Channel Utilization:** {round(matching_node.device_metrics_channel_utilization, 1)}')
-#         # if matching_node.device_metrics_voltage is not None:
-#         #     node_info.append(f'**Node Voltage:** {round(matching_node.device_metrics_voltage, 2)}')
-#         # if matching_node.device_metrics_battery_level is not None:
-#         #     node_info.append(f'**Node Battery Level:** {matching_node.device_metrics_battery_level}')
-#         if matching_node.upd_ts is not None:
-#             node_info.append(f'**Last Update:** {matching_node.upd_ts.strftime('%d %B %Y %I:%M:%S %p')}')
-#         if matching_node.last_update_src is not None:
-#             node_info.append(f'**Last Update Source:** {matching_node.last_update_src}')
-            
-#         node_info_str = '\n'.join(node_info)
-#         embed.add_field(name=matching_node.descriptive_name, value=node_info_str, inline=False)
-
-
-#     out = await interaction.response.send_message(embed=embed)
 
 
 @discord_client.tree.command(name="self", description="Lists info about directly connected node.")
@@ -355,8 +328,14 @@ async def all_nodes(interaction: discord.Interaction):
     await interaction.response.defer()
 
     logging.info(f'/all_node received.')
-    mesh_client.enqueue_all_nodes()
+    
     await asyncio.sleep(0.1)
+    
+    chunks = mesh_client.get_nodes_from_db()
+    if discord_client:
+        for chunk in chunks:
+            discord_client.enqueue_msg(chunk)
+    
 
     await interaction.delete_original_response()
 
@@ -373,7 +352,7 @@ async def debug(interaction: discord.Interaction):
         # if ts > time.time() - (time_limit * 60): # Only include if its less then time_limit
         timezone = pytz.timezone(config.time_zone)
         local_time = datetime.datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(timezone)
-        timestr = local_time.strftime('%d %B %Y %I:%M:%S %p')
+        timestr = time_str_from_dt(local_time)
     else:
         timestr = '???'
 
