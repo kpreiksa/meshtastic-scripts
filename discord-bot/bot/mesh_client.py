@@ -34,7 +34,11 @@ class MeshClient():
 
             db_packet = RXPacket.from_dict(packet, self)
             self._db_session.add(db_packet)
-            self._db_session.commit() # save back to db
+            try:
+                self._db_session.commit() # save back to db
+            except Exception as e:
+                logging.error(f'DB ROLLBACK: {str(e)}')
+                self._db_session.rollback()
 
             if db_packet.is_text_message:
                 logging.info(f"Text message packet received from: {db_packet.src_descriptive}") # For debugging.
@@ -64,7 +68,11 @@ class MeshClient():
                             ack_obj = ACK.from_rx_packet(db_packet, self)
                             self._db_session.add(ack_obj)
                             matching_packet.acks.append(ack_obj)
-                            self._db_session.commit() # save back to db
+                            try:
+                                self._db_session.commit() # save back to db
+                            except Exception as e:
+                                logging.error(f'DB ROLLBACK: {str(e)}')
+                                self._db_session.rollback()
 
                             self.discord_client.enqueue_ack(ack_obj)
                         else:
@@ -95,12 +103,17 @@ class MeshClient():
             # see if node with num exists in db
             matching_node = self._db_session.query(MeshNodeDB).filter_by(node_num=node_num).first()
             if matching_node:
-                MeshNodeDB.update_from_nodedb(node_num, node, self)
+                pass
+                #MeshNodeDB.update_from_nodedb(node_num, node, self)
             else:
                 new_node = MeshNodeDB.from_dict(node, self)
                 self._db_session.add(new_node)
         # should only need to commit once
-        self._db_session.commit()
+        try:
+            self._db_session.commit() # save back to db
+        except Exception as e:
+            logging.error(f'DB ROLLBACK: {str(e)}')
+            self._db_session.rollback()
 
         logging.info('***CONNECTED***')
         logging.info('***************')
@@ -134,7 +147,11 @@ class MeshClient():
 
         db_packet = RXPacket.from_dict(d, self)
         self._db_session.add(db_packet)
-        self._db_session.commit() # save back to db
+        try:
+            self._db_session.commit() # save back to db
+        except Exception as e:
+            logging.error(f'DB ROLLBACK: {str(e)}')
+            self._db_session.rollback()
 
         logging.info(f'Got Response to packet: {db_packet.request_id} from {db_packet.src_descriptive})')
 
@@ -149,7 +166,11 @@ class MeshClient():
 
             self._db_session.add(ack_obj)
             matching_packet.acks.append(ack_obj)
-            self._db_session.commit() # save back to db
+            try:
+                self._db_session.commit() # save back to db
+            except Exception as e:
+                logging.error(f'DB ROLLBACK: {str(e)}')
+                self._db_session.rollback()
 
             # enqueue response to be sent back to discord
             self.discord_client.enqueue_ack(ack_obj)
@@ -590,7 +611,12 @@ class MeshClient():
             self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
         pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
         self._db_session.add(pkt)
-        self._db_session.commit()
+        
+        try:
+            self._db_session.commit() # save back to db
+        except Exception as e:
+            logging.error(f'DB ROLLBACK: {str(e)}')
+            self._db_session.rollback()
 
     def _send_dm(self, nodenum, message, discord_interaction_info=None):
         logging.info(f'Sending message to: {nodenum}')
@@ -599,7 +625,12 @@ class MeshClient():
             self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
             pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
             self._db_session.add(pkt)
-            self._db_session.commit()
+            
+            try:
+                self._db_session.commit() # save back to db
+            except Exception as e:
+                logging.error(f'DB ROLLBACK: {str(e)}')
+                self._db_session.rollback()
 
     def _send_telemetry(self, nodenum=None, discord_interaction_info=None):
         sent_packet = self.iface.sendTelemetry(wantResponse=True)
@@ -608,7 +639,12 @@ class MeshClient():
             self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
             pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
             self._db_session.add(pkt)
-            self._db_session.commit()
+            
+            try:
+                self._db_session.commit() # save back to db
+            except Exception as e:
+                logging.error(f'DB ROLLBACK: {str(e)}')
+                self._db_session.rollback()
 
     # queue processing/background loop
 
