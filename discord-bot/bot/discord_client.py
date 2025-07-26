@@ -123,6 +123,13 @@ class DiscordBot(discord.Client):
             'discord_message_id': discord_message_id,
         })
 
+    def enqueue_tx_confirmation_dm(self, discord_message_id, node_descriptor):
+        self._enqueue_mesh_response({
+            'msg_type': 'TX_CONFIRMATION_DM',
+            'discord_message_id': discord_message_id,
+            'node_descriptive_name': node_descriptor,
+        })
+
     def _enqueue_mesh_response(self, msg):
         self._meshresponsequeue.put(msg)
 
@@ -200,7 +207,26 @@ class DiscordBot(discord.Client):
             e = message.embeds[0]
             e.color = util.MeshBotColors.TX_SENT()
             e.set_field_at(1, name='TX State', value='Sent')
-            # TODO use set_field_at to update the name of the node
+            await message.edit(embed=e)
+
+        elif msg_type == 'TX_CONFIRMATION_DM':
+
+            logging.info(f'Successful TX message: TX_CONFIRMATION_DM received')
+
+            msg_id = msg.get('discord_message_id')
+            if msg_id is None:
+                logging.error('No discord_message_id found in mesh response.')
+                return
+
+            node_descriptor = msg.get('node_descriptive_name')
+
+            message = await self.channel.fetch_message(msg_id)
+
+            # modify the original message
+            e = message.embeds[0]
+            e.color = util.MeshBotColors.TX_SENT()
+            e.set_field_at(0, name='To Node', value=node_descriptor, inline=False)
+            e.set_field_at(1, name='TX State', value='Sent', inline=False)
             await message.edit(embed=e)
 
         elif msg_type == 'TX_ERROR':

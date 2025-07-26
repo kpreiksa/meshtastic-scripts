@@ -232,15 +232,16 @@ class MeshClient():
         if node_id:
             if node_id in self.nodes:
                 return f'{node_id} | {self.get_short_name(node_id,default=default)} | {self.get_long_name(node_id, default=default)}'
+            else:
+                return f'{node_id} | ? | ?'
         else:
             node_id = self.get_node_id(node_id=node_id, nodenum=nodenum, shortname=shortname)
             return self.get_node_descriptive_string(node_id=node_id)
 
-        return default
-
-    def determine_node_id_num_name(self, node):
+    def determine_node_type(self, node):
         """Gets an input that could be a node shortname, ID or number, and determines which it is
-        It always returns a node ID
+        It always returns a node num (because a node ID can always be converted to number)
+        UNLESS the node is a shortname, in which case it returns the shortname - error checking for an invalid node shortname is later
         It does not check if the node ID/short name is valid, just that it is in the correct format.
         """
         # Regex has 4 options:  node shortname, node ID (starts with !), node ID (starts with 0x), or node number
@@ -250,10 +251,10 @@ class MeshClient():
         matches = re.findall(regex, node)
         if not matches:
             logging.error(f'Error: Node input {node} does not match any known formats.')
-            return None, 'node_num', None
+            return None, None
         elif len(matches) > 1:
             logging.error(f'Error: Node input {node} matches multiple formats: {matches}. This is not expected.')
-            return None, 'node_num', None
+            return None, None
         else:
             matches = list(matches[0])
             # find which one is not empty. matches should be a list of 1 tuple, and the tuple will have 4 elements, all should be empty strings except 1
@@ -265,22 +266,26 @@ class MeshClient():
                 match non_empty_index:
                     case 0:
                         # node shortname
-                        return 'send_shortname', 'shortname', node
+                        node_type = 'shortname'
                     case 1:
                         # node ID (starts with !)
-                        return 'send_nodeid', 'nodeid', node
+                        node = self.get_node_num(node_id=node)
+                        node_type = 'nodenum'
                     case 2:
                         # node ID (starts with 0x)
-                        return 'send_nodeid', 'nodeid', '!'+node[2:]
+                        node = self.get_node_num(node_id='!'+node[2:])
+                        node_type = 'nodenum'
                     case 3:
                         # node number
-                        return 'send_nodenum', 'nodenum', int(node)
+                        node = int(node)
+                        node_type = 'nodenum'
                     case _:
                         logging.error(f'Error: Node input {node} matches an unexpected format: {matches}. This is not expected.')
-                        return None, 'node_num', None
+                        return None
+                return node_type, node
             else:
                 logging.error(f'Error: Node input {node} matches multiple formats: {matches}. This is not expected.')
-                return None, 'node_num', None
+                return None, None
 
     def get_node_info(self, node_id=None, nodenum=None, shortname=None, longname=None):
         if node_id:
@@ -297,7 +302,7 @@ class MeshClient():
                 return nodes[0]
             else:
                 logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
-                return None
+                return {}
 
         if longname:
             nodes = [node_data for node_data in self.nodes.values() if node_data.get('user',{}).get('longName',)==longname]
@@ -305,7 +310,7 @@ class MeshClient():
                 return nodes[0]
             else:
                 logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
-                return None
+                return {}
 
     def get_node_id(self, node_id=None, nodenum=None, shortname=None, longname=None):
         if node_id:
@@ -451,7 +456,6 @@ class MeshClient():
 
         #TODO: use Node obj created in onConnectionMesh. Possibly make it auto-updating when accessed
 
-
         battery_level = self.myNodeInfo.get('deviceMetrics',{}).get('batteryLevel',100)
 
         self.my_node_info.device_metrics.battery_level
@@ -538,7 +542,6 @@ class MeshClient():
             message: Message text to send.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
-        # TODO determine if we should use id?
         self._enqueue_msg(
             {
                 'msg_type': 'send_shortname',
@@ -557,11 +560,11 @@ class MeshClient():
             message: Message text to send.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
-        msg_type, node_type, node = self.determine_node_id_num_name(node)
+        node_type, node = self.determine_node_type(node)
 
         self._enqueue_msg(
             {
-                'msg_type': msg_type,
+                'msg_type': f'send_{node_type}',
                 node_type: node,
                 'message': message,
                 'discord_interaction_info': discord_interaction_info,
@@ -721,8 +724,9 @@ class MeshClient():
         logging.info(f'Sending message to: {nodenum}')
         sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
         if sent_packet:
-            self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
             pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
+            node_desc = self.get_node_descriptive_string(nodenum=nodenum)
+            self.discord_client.enqueue_tx_confirmation_dm(discord_interaction_info.message_id, node_desc)
             self._db_session.add(pkt)
             self._db_session.commit()
 
@@ -750,20 +754,18 @@ class MeshClient():
             elif msg_type == 'send_nodenum':
                 nodenum = msg.get('nodenum')
                 self._send_dm(nodenum, message, discord_interaction_info)
-            elif msg_type == 'send_nodeid':
+            elif msg_type == 'send_nodeid': # TODO This is no longer necessary with /dm
                 nodeid = msg.get('nodeid')
                 nodenum = self.get_node_num(node_id=nodeid)
-                if not nodenum:
-                    self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node ID: {nodeid} is invalid.')
-                    return
-                # TODO: If we did not get a nodenum back... respond to the original message with a
-                # descriptive error
                 self._send_dm(nodenum, message, discord_interaction_info)
             elif msg_type == 'send_shortname':
                 shortname = msg.get('shortname')
                 nodenum = self.get_node_num(shortname=shortname)
-                # TODO: If we did not get a nodenum back... respond to the original message with a descriptive error
-                self._send_dm(nodenum, message, discord_interaction_info)
+                if nodenum:
+                    self._send_dm(nodenum, message, discord_interaction_info)
+                else:
+                    # TODO bad shortname, fuzzy wuzzy logic time
+                    self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node shortname: `{shortname}` is invalid. Please check the spelling and try again.')
             elif msg_type == 'telemetry_broadcast':
                 # TODO: Add ability to send on other channels if this even makes sense
                 self._send_telemetry(discord_interaction_info=discord_interaction_info)

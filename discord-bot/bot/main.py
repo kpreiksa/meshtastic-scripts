@@ -101,7 +101,7 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
 
         # craft message
         embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
-        embed.add_field(name="To Node:", value=mesh_client.get_node_descriptive_string(node_id=nodeid), inline=False)  # Add '!' in front of nodeid
+        embed.add_field(name="To Node", value=mesh_client.get_node_descriptive_string(node_id=nodeid), inline=False)  # Add '!' in front of nodeid
         embed.add_field(name='TX State', value='Pending', inline=False)
         embed.set_footer(text=f"{current_time}")
 
@@ -120,12 +120,11 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
     logging.info(f'/sendnum command received. NodeNum: {nodenum}. Sending message: {message}')
-    # TODO add error handling for nodenum
 
     # craft message
     current_time = get_current_time_str()
     embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
-    embed.add_field(name="To Node:", value=f'{mesh_client.get_node_descriptive_string(nodenum=nodenum)}', inline=False)
+    embed.add_field(name="To Node", value=f'{mesh_client.get_node_descriptive_string(nodenum=nodenum)}', inline=False)
     embed.add_field(name='TX State', value='Pending', inline=False)
     embed.set_footer(text=f"{current_time}")
     # send message
@@ -147,11 +146,11 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
     embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
     try:
         node_descriptor = mesh_client.get_node_descriptive_string(shortname=node_name)
-        embed.add_field(name="To Node:", value=f'{mesh_client.get_node_descriptive_string(shortname=node_name)}', inline=False)
+        embed.add_field(name="To Node", value=node_descriptor, inline=False)
         embed.add_field(name='TX State', value='Pending', inline=False)
     except:
         embed.color = MeshBotColors.error()
-        embed.add_field(name="To Node:", value='?', inline=False)
+        embed.add_field(name="To Node", value='?', inline=False)
         embed.add_field(name='TX State', value='Error', inline=False)
         embed.add_field(name='Error Description', value=f'Node with short name: {node_name} not found.', inline=False)
 
@@ -164,9 +163,6 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
     mesh_client.enqueue_send_shortname(node_name, message, discord_interaction_info)
 
 
-# TODO change this to post the message to the channel, create enqueue_send_dm function in mesh_client, move regex logic to that (where lookup is)
-# TODO also enqueue edits back to discord_client - somethign like enqueue_tx_confirmation
-# TODO consider changing the other send commands to not determine the descriptive string in the command, but rather in the TX confirmation (sent)
 @discord_client.tree.command(name="dm", description="Send a message to a specific node.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def dm(interaction: discord.Interaction, node: str, message: str):
@@ -176,7 +172,7 @@ async def dm(interaction: discord.Interaction, node: str, message: str):
 
     # craft message
     embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
-    embed.add_field(name="To Node:", value=f'{node}', inline=False)
+    embed.add_field(name="To Node", value=f'{node}', inline=False)
     embed.add_field(name='TX State', value='Pending', inline=False)
     embed.set_footer(text=f"{current_time}")
     # send message to discord
@@ -195,7 +191,7 @@ for mesh_channel_index, mesh_channel_name in config.channel_names.items():
         current_time = get_current_time_str()
 
         embed = discord.Embed(title=f"Sending Message", description=message, color=MeshBotColors.TX_PENDING())
-        embed.add_field(name="To Channel:", value=config.channel_names[mesh_channel_index], inline=False)
+        embed.add_field(name="To Channel", value=config.channel_names[mesh_channel_index], inline=False)
         embed.add_field(name='TX State', value='Pending', inline=False)
         embed.set_footer(text=f"{current_time}")
 
@@ -243,7 +239,7 @@ async def telemetry_exchange(interaction: discord.Interaction, node_num: str = N
 
     try:
         node_descriptor = mesh_client.get_node_descriptive_string(node_id=node_id, nodenum=node_num, shortname=node_shortname)
-        embed.add_field(name="To Node:", value=f'{node_descriptor}', inline=False)
+        embed.add_field(name="To Node", value=f'{node_descriptor}', inline=False)
         embed.add_field(name='TX State', value='Error', inline=False)
     except Exception as e:
 
