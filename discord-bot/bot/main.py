@@ -247,10 +247,6 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
         error_embed = discord.Embed(title=f"Error", description=f'No node matching ID: {node_id}', color=MeshBotColors.error())
         embeds.append(error_embed)
     else:
-        # node_info = []
-        # position_info = []
-        # device_info = []
-        # env_info = []
         matching_node = matching_nodes[0]
         matching_packets = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).order_by(db_classes.RXPacket.ts.desc()).all()
         portnums = list(set([x.portnum for x in matching_packets]))
