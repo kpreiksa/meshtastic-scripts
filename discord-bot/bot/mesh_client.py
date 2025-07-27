@@ -4,6 +4,7 @@ import queue
 import sys
 import time
 import re
+from difflib import SequenceMatcher
 
 import datetime
 
@@ -294,6 +295,20 @@ class MeshClient():
             else:
                 logging.error(f'Error: Node input {node} matches multiple formats: {matches}. This is not expected.')
                 return None, None
+
+    def get_similar_nodes(self, shortname):
+        """Given a shortname (that is not in the database), returns a list of the 3 nodes that are most similar shortnames"""
+        similar_nodes = []
+        for node in self.nodes.values():
+            node_shortname = node.get('user', {}).get('shortName', '')
+            if node_shortname:
+                similarity = SequenceMatcher(None, shortname.lower(), node_shortname.lower()).ratio()
+                similar_nodes.append([node_shortname, similarity])
+        # sort by similarity
+        similar_nodes = sorted(similar_nodes, key=lambda x: x[1], reverse=True)
+        # return the top 3 most similar nodes; [:3] syntax protects against empty list
+        logging.info(f'Found {len(similar_nodes)} similar nodes for shortname: {shortname}')
+        return similar_nodes[:3]
 
     def get_node_info(self, node_id=None, nodenum=None, shortname=None, longname=None):
         if node_id:
@@ -704,7 +719,15 @@ class MeshClient():
                     self._send_dm(nodenum, message, discord_interaction_info)
                 else:
                     # TODO bad shortname, fuzzy wuzzy logic time
-                    self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node shortname: `{shortname}` is invalid. Please check the spelling and try again.')
+                    # get list of possible shortnames
+                    similar_nodes = self.get_similar_nodes(shortname)
+                    if similar_nodes:
+                        similar_nodes_str = ''
+                        for node in similar_nodes:
+                            similar_nodes_str += f'`{node[0]}`\n'
+                        self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node shortname: `{shortname}` is not found.\nDid you mean:\n{similar_nodes_str}')
+                    else:
+                        self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node shortname: `{shortname}` is not found. Please check the spelling and try again.')
             elif msg_type == 'telemetry_broadcast':
                 # TODO: Add ability to send on other channels if this even makes sense
                 self._send_telemetry(discord_interaction_info=discord_interaction_info)
