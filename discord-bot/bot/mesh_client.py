@@ -395,13 +395,13 @@ class MeshClient():
             active_after = datetime.datetime.now() - datetime.timedelta(minutes=int(time_limit))
             node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.ts >= active_after).distinct().all()
             nodelist_start = f"**Nodes seen in the last {time_limit} minutes:**\n"
+            node_nums = [x[0] for x in node_nums]
+            # get nodes from the node db
+            nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.node_num.in_(node_nums)).all()
         else:
             node_nums = self._db_session.query(RXPacket.src_num).distinct().all()
             nodelist_start = f"**All Nodes in DB:**\n"
-
-        node_nums = [x[0] for x in node_nums]
-        # get nodes from the node db
-        nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.node_num.in_(node_nums)).all()
+            nodes = self._db_session.query(MeshNodeDB).all()
 
         nodelist = []
         for node in nodes:
@@ -415,6 +415,8 @@ class MeshClient():
                 if recent_packet_for_node:
                     last_packet_str = f'{recent_packet_for_node.portnum} at {util.time_str_from_dt(recent_packet_for_node.ts)}'
                     nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | Last Packet: {last_packet_str} | {cnt_packets_from_node} Total Packets ({cnt_packets_24_hr} in past day)", recent_packet_for_node.ts])
+                else:
+                    nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | No Packets in DB (Yet!)", datetime.datetime.fromtimestamp(0)])
 
         if len(nodelist) == 0:
             if time_limit is not None:
