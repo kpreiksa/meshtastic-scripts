@@ -511,16 +511,15 @@ class MeshClient():
         Puts a message on the queue to be sent to a specific node (DM).
 
         Args:
-            nodeid: Node to DM.
+            node: Node to DM.
             message: Message text to send.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
-        node_type, node = self.determine_node_type(node)
 
         self._enqueue_msg(
             {
-                'msg_type': f'send_{node_type}',
-                node_type: node,
+                'msg_type': f'send_dm',
+                'node': node,
                 'message': message,
                 'discord_interaction_info': discord_interaction_info,
             }
@@ -705,14 +704,14 @@ class MeshClient():
                 channel = msg.get('channel')
                 self._send_channel(channel, message, discord_interaction_info)
 
-            elif msg_type == 'send_nodenum':
+            elif msg_type == 'send_nodenum': # TODO This is no longer necessary with /dm
                 nodenum = msg.get('nodenum')
                 self._send_dm(nodenum, message, discord_interaction_info)
-            elif msg_type == 'send_nodeid': # TODO This is no longer necessary with /dm (node num and shrotname are still used)
+            elif msg_type == 'send_nodeid': # TODO This is no longer necessary with /dm
                 nodeid = msg.get('nodeid')
                 nodenum = self.get_node_num(node_id=nodeid)
                 self._send_dm(nodenum, message, discord_interaction_info)
-            elif msg_type == 'send_shortname':
+            elif msg_type == 'send_shortname': # TODO This is no longer necessary with /dm
                 shortname = msg.get('shortname')
                 nodenum = self.get_node_num(shortname=shortname)
                 if nodenum:
@@ -727,6 +726,30 @@ class MeshClient():
                         self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node shortname: `{shortname}` is not found.\nDid you mean:\n{similar_nodes_str}')
                     else:
                         self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node shortname: `{shortname}` is not found. Please check the spelling and try again.')
+
+            elif msg_type == 'send_dm':
+                node = msg.get('node')
+                node_type, proc_node = self.determine_node_type(node)
+                if node_type == 'shortname':
+                    nodenum = self.get_node_num(shortname=proc_node)
+                    if not nodenum:
+                        # get list of possible shortnames
+                        similar_nodes = self.get_similar_nodes(proc_node)
+                        if similar_nodes:
+                            similar_nodes_str = ''
+                            for node in similar_nodes:
+                                similar_nodes_str += f'`{node[0]}`\n'
+                            self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node shortname: `{proc_node}` is not found.\nDid you mean:\n{similar_nodes_str}')
+                        else:
+                            self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node shortname: `{proc_node}` is not found. Please check the spelling and try again.')
+                    else:
+                        self._send_dm(nodenum, message, discord_interaction_info)
+                elif node_type == 'nodenum':
+                    self._send_dm(proc_node, message, discord_interaction_info)
+                else:
+                    error_str = f'Input `{node}` is an invalid node format.\nPlease use a shortname, node ID (starting with !), or node number.'
+                    self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, error_str)
+
             elif msg_type == 'telemetry_broadcast':
                 # TODO: Add ability to send on other channels if this even makes sense
                 self._send_telemetry(discord_interaction_info=discord_interaction_info)
