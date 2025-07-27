@@ -41,11 +41,11 @@ class MeshClient():
             if db_packet.is_text_message:
                 logging.info(f"Text message packet received from: {db_packet.src_descriptive}") # For debugging.
                 self.discord_client.enqueue_mesh_text_msg_received(db_packet)
-                
+
             elif db_packet.portnum == 'NODEINFO_APP':
                 # get the nodeinfo and update the MeshNodeDB
                 MeshNodeDB.update_from_nodeinfo(packet, self)
-                
+
             elif db_packet.portnum == 'TRACEROUTE_APP':
                 # get the nodeinfo and update the MeshNodeDB
                 pass
@@ -361,14 +361,14 @@ class MeshClient():
         else:
             node = self.get_node_info(shortname=shortname, longname=longname)
             return node.get('num')
-    
+
     def get_nodes_from_db(self, time_limit=None):
         """
         Gets nodes from DB with optional lookback time filter applied.
         """
 
         logging.info(f'get_nodes_from_db has been called with: {time_limit} mins')
-        
+
         if time_limit is not None:
             # get all packets in the last x minutes, then get the node info
             active_after = datetime.datetime.now() - datetime.timedelta(minutes=int(time_limit))
@@ -377,11 +377,11 @@ class MeshClient():
         else:
             node_nums = self._db_session.query(RXPacket.src_num).distinct().all()
             nodelist_start = f"**All Nodes in DB:**\n"
-            
+
         node_nums = [x[0] for x in node_nums]
         # get nodes from the node db
         nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.node_num.in_(node_nums)).all()
-        
+
         nodelist = []
         for node in nodes:
             if node.node_num != self.my_node_info.node_num: # ignore ourselves
@@ -394,7 +394,7 @@ class MeshClient():
                 if recent_packet_for_node:
                     last_packet_str = f'{recent_packet_for_node.portnum} at {util.time_str_from_dt(recent_packet_for_node.ts)}'
                     nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | Last Packet: {last_packet_str} | {cnt_packets_from_node} Total Packets ({cnt_packets_24_hr} in past day)", recent_packet_for_node.ts])
-            
+
         if len(nodelist) == 0:
             if time_limit is not None:
                 nodelist_start = f'**No Nodes seen in the last {time_limit} minutes**'
@@ -708,7 +708,7 @@ class MeshClient():
             elif msg_type == 'send_nodenum':
                 nodenum = msg.get('nodenum')
                 self._send_dm(nodenum, message, discord_interaction_info)
-            elif msg_type == 'send_nodeid': # TODO This is no longer necessary with /dm
+            elif msg_type == 'send_nodeid': # TODO This is no longer necessary with /dm (node num and shrotname are still used)
                 nodeid = msg.get('nodeid')
                 nodenum = self.get_node_num(node_id=nodeid)
                 self._send_dm(nodenum, message, discord_interaction_info)
@@ -718,7 +718,6 @@ class MeshClient():
                 if nodenum:
                     self._send_dm(nodenum, message, discord_interaction_info)
                 else:
-                    # TODO bad shortname, fuzzy wuzzy logic time
                     # get list of possible shortnames
                     similar_nodes = self.get_similar_nodes(shortname)
                     if similar_nodes:
