@@ -3,6 +3,8 @@ import logging
 import queue
 import sys
 import time
+import re
+from difflib import SequenceMatcher
 
 import datetime
 
@@ -43,11 +45,11 @@ class MeshClient():
             if db_packet.is_text_message:
                 logging.info(f"Text message packet received from: {db_packet.src_descriptive}") # For debugging.
                 self.discord_client.enqueue_mesh_text_msg_received(db_packet)
-                
+
             elif db_packet.portnum == 'NODEINFO_APP':
                 # get the nodeinfo and update the MeshNodeDB
                 MeshNodeDB.update_from_nodeinfo(packet, self)
-                
+
             elif db_packet.portnum == 'TRACEROUTE_APP':
                 # get the nodeinfo and update the MeshNodeDB
                 pass
@@ -260,11 +262,74 @@ class MeshClient():
         if node_id:
             if node_id in self.nodes:
                 return f'{node_id} | {self.get_short_name(node_id,default=default)} | {self.get_long_name(node_id, default=default)}'
+            else:
+                return f'{node_id} | ? | ?'
         else:
             node_id = self.get_node_id(node_id=node_id, nodenum=nodenum, shortname=shortname)
             return self.get_node_descriptive_string(node_id=node_id)
 
-        return default
+    def determine_node_type(self, node):
+        """Gets an input that could be a node shortname, ID or number, and determines which it is
+        It always returns a node num (because a node ID can always be converted to number)
+        UNLESS the node is a shortname, in which case it returns the shortname - error checking for an invalid node shortname is later
+        It does not check if the node ID/short name is valid, just that it is in the correct format.
+        """
+        # Regex has 4 options:  node shortname, node ID (starts with !), node ID (starts with 0x), or node number
+        # must convert 0x to !
+        regex = '(^.{1,4}$)|(^![a-zA-Z0-9]{8}$)|(^0x[a-zA-Z0-9]{8}$)|(\\d{1,10}$)'
+
+        matches = re.findall(regex, node)
+        if not matches:
+            logging.error(f'Error: Node input {node} does not match any known formats.')
+            return None, None
+        elif len(matches) > 1:
+            logging.error(f'Error: Node input {node} matches multiple formats: {matches}. This is not expected.')
+            return None, None
+        else:
+            matches = list(matches[0])
+            # find which one is not empty. matches should be a list of 1 tuple, and the tuple will have 4 elements, all should be empty strings except 1
+            # check if tuple has 3 empty strings and 1 non-empty string
+            empty_str_cnt = matches.count('')
+            if empty_str_cnt == 3:
+                # find index for non-empty string
+                non_empty_index = matches.index(next(filter(lambda x: x != '', matches)))
+                match non_empty_index:
+                    case 0:
+                        # node shortname
+                        node_type = 'shortname'
+                    case 1:
+                        # node ID (starts with !)
+                        node = self.get_node_num(node_id=node)
+                        node_type = 'nodenum'
+                    case 2:
+                        # node ID (starts with 0x)
+                        node = self.get_node_num(node_id='!'+node[2:])
+                        node_type = 'nodenum'
+                    case 3:
+                        # node number
+                        node = int(node)
+                        node_type = 'nodenum'
+                    case _:
+                        logging.error(f'Error: Node input {node} matches an unexpected format: {matches}. This is not expected.')
+                        return None
+                return node_type, node
+            else:
+                logging.error(f'Error: Node input {node} matches multiple formats: {matches}. This is not expected.')
+                return None, None
+
+    def get_similar_nodes(self, shortname):
+        """Given a shortname (that is not in the database), returns a list of the 3 nodes that are most similar shortnames"""
+        similar_nodes = []
+        for node in self.nodes.values():
+            node_shortname = node.get('user', {}).get('shortName', '')
+            if node_shortname:
+                similarity = SequenceMatcher(None, shortname.lower(), node_shortname.lower()).ratio()
+                similar_nodes.append([node_shortname, similarity])
+        # sort by similarity
+        similar_nodes = sorted(similar_nodes, key=lambda x: x[1], reverse=True)
+        # return the top 3 most similar nodes; [:3] syntax protects against empty list
+        logging.info(f'Found {len(similar_nodes)} similar nodes for shortname: {shortname}')
+        return similar_nodes[:3]
 
     def get_node_info(self, node_id=None, nodenum=None, shortname=None, longname=None):
         if node_id:
@@ -281,7 +346,7 @@ class MeshClient():
                 return nodes[0]
             else:
                 logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
-                return None
+                return {}
 
         if longname:
             nodes = [node_data for node_data in self.nodes.values() if node_data.get('user',{}).get('longName',)==longname]
@@ -289,7 +354,7 @@ class MeshClient():
                 return nodes[0]
             else:
                 logging.info(f'Number of nodes found matching this shortname was {len(nodes)}')
-                return None
+                return {}
 
     def get_node_id(self, node_id=None, nodenum=None, shortname=None, longname=None):
         if node_id:
@@ -317,14 +382,14 @@ class MeshClient():
         else:
             node = self.get_node_info(shortname=shortname, longname=longname)
             return node.get('num')
-    
+
     def get_nodes_from_db(self, time_limit=None):
         """
         Gets nodes from DB with optional lookback time filter applied.
         """
 
         logging.info(f'get_nodes_from_db has been called with: {time_limit} mins')
-        
+
         if time_limit is not None:
             # get all packets in the last x minutes, then get the node info
             active_after = datetime.datetime.now() - datetime.timedelta(minutes=int(time_limit))
@@ -333,11 +398,11 @@ class MeshClient():
         else:
             node_nums = self._db_session.query(RXPacket.src_num).distinct().all()
             nodelist_start = f"**All Nodes in DB:**\n"
-            
+
         node_nums = [x[0] for x in node_nums]
         # get nodes from the node db
         nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.node_num.in_(node_nums)).all()
-        
+
         nodelist = []
         for node in nodes:
             if node.node_num != self.my_node_info.node_num: # ignore ourselves
@@ -350,7 +415,7 @@ class MeshClient():
                 if recent_packet_for_node:
                     last_packet_str = f'{recent_packet_for_node.portnum} at {util.time_str_from_dt(recent_packet_for_node.ts)}'
                     nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | Last Packet: {last_packet_str} | {cnt_packets_from_node} Total Packets ({cnt_packets_24_hr} in past day)", recent_packet_for_node.ts])
-            
+
         if len(nodelist) == 0:
             if time_limit is not None:
                 nodelist_start = f'**No Nodes seen in the last {time_limit} minutes**'
@@ -368,7 +433,6 @@ class MeshClient():
         # runs every minute, not eff but idk what else to do
 
         #TODO: use Node obj created in onConnectionMesh. Possibly make it auto-updating when accessed
-
 
         battery_level = self.myNodeInfo.get('deviceMetrics',{}).get('batteryLevel',100)
 
@@ -412,7 +476,7 @@ class MeshClient():
         Puts a message on the queue to be sent to a specific node (DM) by node number.
 
         Args:
-            nodenum: Node to DM.
+            nodenum: Node num to DM.
             message: Message text to send.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
@@ -431,7 +495,7 @@ class MeshClient():
         Puts a message on the queue to be sent to a specific node (DM) by ID.
 
         Args:
-            nodeid: Node to DM.
+            nodeid: Node ID to DM.
             message: Message text to send.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
@@ -450,16 +514,34 @@ class MeshClient():
         Puts a message on the queue to be sent to a specific node (DM) by short name.
 
         Args:
-            nodeid: Node to DM.
+            shortname: shortname of Node to DM.
             message: Message text to send.
             discord_interaction_info: Information about discord message to fascilitate replies.
         """
-
-
         self._enqueue_msg(
             {
                 'msg_type': 'send_shortname',
                 'shortname': shortname,
+                'message': message,
+                'discord_interaction_info': discord_interaction_info,
+            }
+        )
+
+    def enqueue_send_dm(self, node, message, discord_interaction_info):
+        """
+        Puts a message on the queue to be sent to a specific node (DM).
+
+        Args:
+            nodeid: Node to DM.
+            message: Message text to send.
+            discord_interaction_info: Information about discord message to fascilitate replies.
+        """
+        node_type, node = self.determine_node_type(node)
+
+        self._enqueue_msg(
+            {
+                'msg_type': f'send_{node_type}',
+                node_type: node,
                 'message': message,
                 'discord_interaction_info': discord_interaction_info,
             }
@@ -622,8 +704,9 @@ class MeshClient():
         logging.info(f'Sending message to: {nodenum}')
         sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
         if sent_packet:
-            self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
             pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
+            node_desc = self.get_node_descriptive_string(nodenum=nodenum)
+            self.discord_client.enqueue_tx_confirmation_dm(discord_interaction_info.message_id, node_desc)
             self._db_session.add(pkt)
             
             try:
@@ -661,21 +744,25 @@ class MeshClient():
             elif msg_type == 'send_nodenum':
                 nodenum = msg.get('nodenum')
                 self._send_dm(nodenum, message, discord_interaction_info)
-            elif msg_type == 'send_nodeid':
+            elif msg_type == 'send_nodeid': # TODO This is no longer necessary with /dm (node num and shrotname are still used)
                 nodeid = msg.get('nodeid')
                 nodenum = self.get_node_num(node_id=nodeid)
-                if not nodenum:
-                    self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node ID: {nodeid} is invalid.')
-                    return
-                # TODO: If we did not get a nodenum back... respond to the original message with a
-                # descriptive error
                 self._send_dm(nodenum, message, discord_interaction_info)
             elif msg_type == 'send_shortname':
                 shortname = msg.get('shortname')
                 nodenum = self.get_node_num(shortname=shortname)
-                # TODO: If we did not get a nodenum back... respond to the original message with a
-                # descriptive error
-                self._send_dm(nodenum, message, discord_interaction_info)
+                if nodenum:
+                    self._send_dm(nodenum, message, discord_interaction_info)
+                else:
+                    # get list of possible shortnames
+                    similar_nodes = self.get_similar_nodes(shortname)
+                    if similar_nodes:
+                        similar_nodes_str = ''
+                        for node in similar_nodes:
+                            similar_nodes_str += f'`{node[0]}`\n'
+                        self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node shortname: `{shortname}` is not found.\nDid you mean:\n{similar_nodes_str}')
+                    else:
+                        self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node shortname: `{shortname}` is not found. Please check the spelling and try again.')
             elif msg_type == 'telemetry_broadcast':
                 # TODO: Add ability to send on other channels if this even makes sense
                 self._send_telemetry(discord_interaction_info=discord_interaction_info)

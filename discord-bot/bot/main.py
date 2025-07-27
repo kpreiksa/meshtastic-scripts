@@ -100,7 +100,7 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
 
         # craft message
         embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
-        embed.add_field(name="To Node:", value=mesh_client.get_node_descriptive_string(node_id=nodeid), inline=False)  # Add '!' in front of nodeid
+        embed.add_field(name="To Node", value=mesh_client.get_node_descriptive_string(node_id=nodeid), inline=False)  # Add '!' in front of nodeid
         embed.add_field(name='TX State', value='Pending', inline=False)
         embed.set_footer(text=f"{current_time}")
 
@@ -119,12 +119,11 @@ async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
     logging.info(f'/sendnum command received. NodeNum: {nodenum}. Sending message: {message}')
-    # TODO add error handling for nodenum
 
     # craft message
     current_time = get_current_time_str()
     embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
-    embed.add_field(name="To Node:", value=f'{mesh_client.get_node_descriptive_string(nodenum=nodenum)}', inline=False)
+    embed.add_field(name="To Node", value=f'{mesh_client.get_node_descriptive_string(nodenum=nodenum)}', inline=False)
     embed.add_field(name='TX State', value='Pending', inline=False)
     embed.set_footer(text=f"{current_time}")
     # send message
@@ -145,11 +144,11 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
     embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
     try:
         node_descriptor = mesh_client.get_node_descriptive_string(shortname=node_name)
-        embed.add_field(name="To Node:", value=f'{mesh_client.get_node_descriptive_string(shortname=node_name)}', inline=False)
+        embed.add_field(name="To Node", value=node_descriptor, inline=False)
         embed.add_field(name='TX State', value='Pending', inline=False)
     except:
         embed.color = MeshBotColors.error()
-        embed.add_field(name="To Node:", value='?', inline=False)
+        embed.add_field(name="To Node", value='?', inline=False)
         embed.add_field(name='TX State', value='Error', inline=False)
         embed.add_field(name='Error Description', value=f'Node with short name: {node_name} not found.', inline=False)
 
@@ -161,6 +160,26 @@ async def send_shortname(interaction: discord.Interaction, node_name: str, messa
     discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id, interaction.user.id, interaction.user.display_name, interaction.user.global_name, interaction.user.name, interaction.user.mention)
     mesh_client.enqueue_send_shortname(node_name, message, discord_interaction_info)
 
+
+@discord_client.tree.command(name="dm", description="Send a message to a specific node.")
+@discord_client.only_in_channel(discord_client.dis_channel_id)
+async def dm(interaction: discord.Interaction, node: str, message: str):
+    logging.info(f'/dm command received. Node Input: {node}. Sending message: {message}')
+
+    current_time = get_current_time_str()
+
+    # craft message
+    embed = discord.Embed(title="Sending Message", description=message, color=MeshBotColors.TX_PENDING())
+    embed.add_field(name="To Node", value=f'{node}', inline=False)
+    embed.add_field(name='TX State', value='Pending', inline=False)
+    embed.set_footer(text=f"{current_time}")
+    # send message to discord
+    out = await interaction.response.send_message(embed=embed)
+
+    # queue message to be sent on mesh
+    discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
+    mesh_client.enqueue_send_dm(node, message, discord_interaction_info)
+
 # Dynamically create commands based on mesh_channel_names
 for mesh_channel_index, mesh_channel_name in config.channel_names.items():
     @discord_client.tree.command(name=mesh_channel_name.lower(), description=f"Send a message in the {mesh_channel_name} channel.")
@@ -170,7 +189,7 @@ for mesh_channel_index, mesh_channel_name in config.channel_names.items():
         current_time = get_current_time_str()
 
         embed = discord.Embed(title=f"Sending Message", description=message, color=MeshBotColors.TX_PENDING())
-        embed.add_field(name="To Channel:", value=config.channel_names[mesh_channel_index], inline=False)
+        embed.add_field(name="To Channel", value=config.channel_names[mesh_channel_index], inline=False)
         embed.add_field(name='TX State', value='Pending', inline=False)
         embed.set_footer(text=f"{current_time}")
 
@@ -197,30 +216,29 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
     await interaction.response.defer()
 
     logging.info(f'/active received, sending to queue with time: {active_time}')
-    
+
     await asyncio.sleep(0.1)
-    
+
     chunks = mesh_client.get_nodes_from_db(time_limit=active_time)
     if discord_client:
         for chunk in chunks:
             discord_client.enqueue_msg(chunk)
-            
+
     await interaction.delete_original_response()
-    
-    
+
+
 @discord_client.tree.command(name="nodeinfo", description="Gets info for a node from the database")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
-async def active(interaction: discord.Interaction, node_id: str):
-    
+async def nodeinfo(interaction: discord.Interaction, node_id: str):
+
     logging.info(f'/nodeinfo received, doing query for node ID: {node_id}')
     current_time = get_current_time_str()
-    
-    embeds = []
 
+    embeds = []
     
     n = mesh_client.get_node_num(node_id=node_id)
-    
-    # convert id to num to look up node 
+
+    # convert id to num to look up node
     matching_nodes = mesh_client._db_session.query(db_classes.MeshNodeDB).filter(db_classes.MeshNodeDB.node_num == n).all()
     if len(matching_nodes) > 1:
         error_embed = discord.Embed(title=f"Error", description=f'More than 1 node matching ID: {node_id}', color=MeshBotColors.error())
@@ -236,7 +254,7 @@ async def active(interaction: discord.Interaction, node_id: str):
         matching_node = matching_nodes[0]
         matching_packets = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).order_by(db_classes.RXPacket.ts.desc()).all()
         portnums = list(set([x.portnum for x in matching_packets]))
-        
+
         ni_embed = discord.Embed(title=f"Node Info", description=f'From DB for Node: {node_id}', color=MeshBotColors.violet())
         ni_embed.add_field(name='Node ID/Name', value=matching_node.descriptive_name, inline=False)
         
@@ -271,15 +289,14 @@ async def active(interaction: discord.Interaction, node_id: str):
             lon = latest_position_packet.longitude
             alt_m = latest_position_packet.altitude
             alt_ft = round(alt_m * 3.281, 0)
-            
+
             location_source = latest_position_packet.location_source
             pdop = latest_position_packet.pdop
             ground_speed = latest_position_packet.ground_speed
             sats_in_view = latest_position_packet.sats_in_view
             precision_bits = latest_position_packet.precision_bits
-            
+
             url = f'https://www.google.com/maps/search/?api=1&query={lat},{lon}'
-            
             position_embed = discord.Embed(title=f"Position Info", color=MeshBotColors.violet())
             
             position_embed.add_field(name='Position', value = f'[{round(lat,3)},{round(lon,3)}]({url})', inline=False)
@@ -291,6 +308,7 @@ async def active(interaction: discord.Interaction, node_id: str):
             position_embed.add_field(name='Precision Bits', value=f'{precision_bits}', inline=False)
             position_embed.set_footer(text=f'{time_str_from_dt(latest_position_packet.ts)}')
             embeds.append((position_embed, latest_position_packet.ts))
+
 
         # get most recent position packet
         latest_device_metrics_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.portnum == 'TELEMETRY_APP').filter(db_classes.RXPacket.has_device_metrics == True).order_by(db_classes.RXPacket.ts.desc()).first()
@@ -343,7 +361,6 @@ async def active(interaction: discord.Interaction, node_id: str):
         embeds.insert(0, ni_embed)
 
     out = await interaction.response.send_message(embeds=embeds)
-    
 
 
 @discord_client.tree.command(name="self", description="Lists info about directly connected node.")
@@ -368,14 +385,14 @@ async def all_nodes(interaction: discord.Interaction):
     await interaction.response.defer()
 
     logging.info(f'/all_node received.')
-    
+
     await asyncio.sleep(0.1)
-    
+
     chunks = mesh_client.get_nodes_from_db()
     if discord_client:
         for chunk in chunks:
             discord_client.enqueue_msg(chunk)
-    
+
 
     await interaction.delete_original_response()
 
