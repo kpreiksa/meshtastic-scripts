@@ -5,7 +5,7 @@ import sys
 import time
 import re
 
-from datetime import datetime
+import datetime
 
 import meshtastic
 import meshtastic.ble_interface
@@ -18,6 +18,7 @@ from mesh_node_classes import MeshNode
 
 from db_classes import TXPacket, RXPacket, ACK, MeshNodeDB
 
+import util
 # move all of this to config
 battery_warning = 15 # move to config
 
@@ -39,6 +40,14 @@ class MeshClient():
             if db_packet.is_text_message:
                 logging.info(f"Text message packet received from: {db_packet.src_descriptive}") # For debugging.
                 self.discord_client.enqueue_mesh_text_msg_received(db_packet)
+                
+            elif db_packet.portnum == 'NODEINFO_APP':
+                # get the nodeinfo and update the MeshNodeDB
+                MeshNodeDB.update_from_nodeinfo(packet, self)
+                
+            elif db_packet.portnum == 'TRACEROUTE_APP':
+                # get the nodeinfo and update the MeshNodeDB
+                pass
 
             elif db_packet.portnum == 'ROUTING_APP':
                 if db_packet.priority == 'ACK':
@@ -87,8 +96,7 @@ class MeshClient():
             # see if node with num exists in db
             matching_node = self._db_session.query(MeshNodeDB).filter_by(node_num=node_num).first()
             if matching_node:
-                # TODO: Make update func
-                pass
+                MeshNodeDB.update_from_nodedb(node_num, node, self)
             else:
                 new_node = MeshNodeDB.from_dict(node, self)
                 self._db_session.add(new_node)
@@ -338,116 +346,50 @@ class MeshClient():
         else:
             node = self.get_node_info(shortname=shortname, longname=longname)
             return node.get('num')
+    
+    def get_nodes_from_db(self, time_limit=None):
+        """
+        Gets nodes from DB with optional lookback time filter applied.
+        """
 
-    # admin tasks
-
-    def get_active_nodes(self, time_limit=15):
-
-        logging.info(f'get_active_nodes has been called with: {time_limit} mins')
-
-        # use self.nodes that was pulled 1m ago
+        logging.info(f'get_nodes_from_db has been called with: {time_limit} mins')
+        
+        if time_limit is not None:
+            # get all packets in the last x minutes, then get the node info
+            active_after = datetime.datetime.now() - datetime.timedelta(minutes=int(time_limit))
+            node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.ts >= active_after).distinct().all()
+            nodelist_start = f"**Nodes seen in the last {time_limit} minutes:**\n"
+        else:
+            node_nums = self._db_session.query(RXPacket.src_num).distinct().all()
+            nodelist_start = f"**All Nodes in DB:**\n"
+            
+        node_nums = [x[0] for x in node_nums]
+        # get nodes from the node db
+        nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.node_num.in_(node_nums)).all()
+        
         nodelist = []
-        time_limit = int(time_limit)
-        nodelist_start = f"**Nodes seen in the last {time_limit} minutes:**\n"
-
-        for node in self.nodes.values():
-            try:
-                # is_self = False
-                id = node.get('user',{}).get('id','???')
-                if id == self.my_node_info.user_info.user_id:
-                    # do not include SELF
-                    continue
-                    # is_self = True
-                shortname = node.get('user',{}).get('shortName','???')
-                longname = node.get('user',{}).get('longName','???')
-                hopsaway = node.get('hopsAway', '?')
-                snr = node.get('snr','?')
-
-                # some nodes don't have last heard, when listing active nodes, don't return these
-                lastheard = node.get('lastHeard')
-                if lastheard: # ignore if doesn't have lastHeard property
-                    ts = int(lastheard)
-                    # if ts > time.time() - (time_limit * 60): # Only include if its less then time_limit
-                    timezone = pytz.timezone(self.config.time_zone)
-                    local_time = datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(timezone)
-                    timestr = local_time.strftime('%d %B %Y %I:%M:%S %p')
-                else:
-                    timestr = '???'
-                    ts = 0
-
-                # check if they are greater then the time limit
-                if ts > time.time() - (time_limit * 60):
-                    # if is_self:
-                    #     nodelist.append([f"\n {id} (**SELF**) | {shortname} | {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
-                    # else:
-                    nodelist.append([f"\n {id} | {shortname} | {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
-
-            except KeyError as e:
-                logging.error(e)
-                pass
-
+        for node in nodes:
+            if node.node_num != self.my_node_info.node_num: # ignore ourselves
+                # add lastHeard via latest packet RX'd and its type
+                recent_packet_for_node = self._db_session.query(RXPacket).filter(RXPacket.src_num == node.node_num).order_by(RXPacket.ts.desc()).first()
+                hr_ago_24 = datetime.datetime.now() - datetime.timedelta(days=1)
+                cnt_packets_24_hr = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.ts >= hr_ago_24).count()
+                cnt_packets_from_node = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).count()
+                last_packet_str = ''
+                if recent_packet_for_node:
+                    last_packet_str = f'{recent_packet_for_node.portnum} at {util.time_str_from_dt(recent_packet_for_node.ts)}'
+                    nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | Last Packet: {last_packet_str} | {cnt_packets_from_node} Total Packets ({cnt_packets_24_hr} in past day)", recent_packet_for_node.ts])
+            
         if len(nodelist) == 0:
-            # no nodes found, change response
-            nodelist_start = f'**No Nodes seen in the last {time_limit} minutes**'
+            if time_limit is not None:
+                nodelist_start = f'**No Nodes seen in the last {time_limit} minutes**'
+            else:
+                nodelist_start = f'**No Nodes exist in DB**'
 
         # sort nodelist and remove ts from it
         nodelist_sorted = sorted(nodelist, key=lambda x: x[1], reverse=True)
         nodelist_sorted = [x[0] for x in nodelist_sorted]
         nodelist_sorted.insert(0, nodelist_start)
-
-        # Split node list into chunks of 10 rows.
-        nodelist_chunks = ["".join(nodelist_sorted[i:i + 10]) for i in range(0, len(nodelist_sorted), 10)]
-        return nodelist_chunks
-
-    def get_all_nodes(self):
-        # Get All nodes = BIG print.
-        logging.info(f'get_all_nodes has been called')
-
-        # use self.nodes that was pulled 1m ago
-        nodelist = []
-
-        nodelist_start = f"**All Nodes Seen:**\n"
-
-        for node in self.nodes.values():
-            try:
-                # is_self = False
-                id = node.get('user',{}).get('id','???')
-                if id == self.my_node_info.user_info.user_id:
-                    # do not include SELF
-                    continue
-                    # is_self = True
-                shortname = node.get('user',{}).get('shortName','???')
-                longname = node.get('user',{}).get('longName','???')
-                hopsaway = node.get('hopsAway', '?')
-                snr = node.get('snr','?')
-
-                # some nodes don't have last heard, when listing active nodes, don't return these
-                lastheard = node.get('lastHeard')
-                if lastheard: # ignore if doesn't have lastHeard property
-                    ts = int(lastheard)
-                    # if ts > time.time() - (time_limit * 60): # Only include if its less then time_limit
-                    timezone = pytz.timezone(self.config.time_zone)
-                    local_time = datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(timezone)
-                    timestr = local_time.strftime('%d %B %Y %I:%M:%S %p')
-                else:
-                    timestr = '???'
-                    ts = 0
-
-                # if is_self:
-                #     nodelist.append([f"\n {id} (**SELF**) | {shortname} | {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
-                # else:
-                nodelist.append([f"\n {id} | {shortname} | {longname} | **Hops:** {hopsaway} | **SNR:** {snr} | **Last Heard:** {timestr}",ts])
-
-            except KeyError as e:
-                logging.error(e)
-                pass
-
-        # sort nodelist and remove ts from it
-        nodelist_sorted = sorted(nodelist, key=lambda x: x[1], reverse=True)
-        nodelist_sorted = [x[0] for x in nodelist_sorted]
-        nodelist_sorted.insert(0, nodelist_start)
-
-        # Split node list into chunks of 10 rows.
         nodelist_chunks = ["".join(nodelist_sorted[i:i + 10]) for i in range(0, len(nodelist_sorted), 10)]
         return nodelist_chunks
 
@@ -471,8 +413,6 @@ class MeshClient():
             )
 
             self.discord_client.enqueue_battery_low_alert(text)
-
-
 
     # methods to ensure we enqueue the proper type of command/message
 
@@ -638,7 +578,6 @@ class MeshClient():
             }
         )
 
-
     def enqueue_active_nodes(self, active_time, method='node_db'):
         """
         Requests the active nodes.
@@ -791,20 +730,7 @@ class MeshClient():
     def process_admin_queue_message(self, msg):
         if isinstance(msg, dict):
             msg_type = msg.get('msg_type')
-            if msg_type == 'active_nodes':
-                active_time = msg.get('active_time')
-                method = msg.get('method') #TODO: Implement different way or getting active nodes
-                chunks = self.get_active_nodes(active_time)
-                if self.discord_client:
-                    for chunk in chunks:
-                        self.discord_client.enqueue_msg(chunk)
-            elif msg_type == 'all_nodes':
-                method = msg.get('method') #TODO: Implement different way or getting all nodes
-                chunks = self.get_all_nodes()
-                if self.discord_client:
-                    for chunk in chunks:
-                        self.discord_client.enqueue_msg(chunk)
-            elif msg_type == 'traceroute_nodeid':
+            if msg_type == 'traceroute_nodeid':
                 node_id = msg.get('node_id')
                 # discord_guild_id = msg.get('guild_id')
                 # discord_channel_id = msg.get('channel_id')

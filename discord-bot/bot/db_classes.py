@@ -1,7 +1,8 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, Double, ForeignKey, JSON
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, Double, ForeignKey, JSON, DateTime
 from db_base import Base
 
 from sqlalchemy.orm import relationship
+import datetime
 
 import meshtastic
 
@@ -13,9 +14,11 @@ class RXPacket(Base):
     publisher_discord_bot_user_id = Column(String) # it is a big integer...
     
     channel = Column(Integer)
+    src_num = Column(Integer)
     src_id = Column(String)
     src_short_name = Column(String)
     src_long_name = Column(String)
+    dst_num = Column(Integer)
     dst_id = Column(String)
     dst_short_name = Column(String)
     dst_long_name = Column(String)
@@ -32,6 +35,9 @@ class RXPacket(Base):
     
     # text message
     text = Column(String)
+    bitfield = Column(Integer)
+    emoji = Column(Integer)
+    reply_id = Column(Integer)
     
     # telemetry_data = Column(JSON)
     telemetry_air_quality_metrics = Column(JSON)
@@ -71,6 +77,11 @@ class RXPacket(Base):
     # routing
     request_id = Column(String) # maybe int?
     error_reason = Column(String)
+    
+    # traceroute
+    traceroute_data = Column(JSON)
+    
+    ts = Column(DateTime)
     
     @property
     def is_text_message(self):
@@ -150,9 +161,16 @@ class RXPacket(Base):
         portnum = decoded.get('portnum')
         
         text = None
+        bitfield = None
+        emoji = None
+        reply_id = None
         
         if portnum == 'TEXT_MESSAGE_APP':
             text = decoded.get('text')
+            bitfield = decoded.get('bitfield')
+            emoji = decoded.get('emoji')
+            reply_id = decoded.get('replyId')
+        
             
         has_position_data = False
         
@@ -235,6 +253,15 @@ class RXPacket(Base):
         if portnum == 'ROUTING_APP':
             request_id = decoded.get('requestId')
             error_reason = decoded.get('routing').get('errorReason')
+            
+        traceroute_data = {}
+            
+        if portnum == 'TRACEROUTE_APP':
+            traceroute_data = decoded.get('traceroute', {})
+            try:
+                del traceroute_data['raw']
+            except:
+                pass
         
         out = RXPacket(
             
@@ -246,9 +273,11 @@ class RXPacket(Base):
             has_power_metrics = has_power_metrics,
             has_position_data = has_position_data,
             channel = channel,
+            src_num = src_num,
             src_id = src_id,
             src_short_name = src_short_name,
             src_long_name = src_long_name,
+            dst_num = dst_num,
             dst_id = dst_id,
             dst_short_name = dst_short_name,
             dst_long_name = dst_long_name,
@@ -263,6 +292,9 @@ class RXPacket(Base):
             to_all = to_all,
             want_ack = want_ack,
             text = text,
+            bitfield = bitfield,
+            emoji = emoji,
+            reply_id = reply_id,
             telemetry_air_quality_metrics = telemetry_air_quality_metrics,
             telemetry_device_metrics = telemetry_device_metrics,
             telemetry_environment_metrics = telemetry_environment_metrics,
@@ -287,7 +319,9 @@ class RXPacket(Base):
             hw_model = hw_model,
             public_key = public_key,
             request_id = request_id,
-            error_reason = error_reason
+            error_reason = error_reason,
+            traceroute_data = traceroute_data,
+            ts=datetime.datetime.now()
             
         )
         return out
@@ -312,6 +346,12 @@ class TXPacket(Base):
     discord_guild_id = Column(String)
     discord_channel_id = Column(String)
     discord_message_id = Column(String)
+    discord_user_id = Column(String)
+    discord_user_display_name = Column(String)
+    discord_user_global_name = Column(String)
+    discord_user_name = Column(String)
+    discord_user_mention = Column(String)
+    ts = Column(DateTime)
     
     acks = relationship("ACK", back_populates="tx_packet")
     
@@ -341,7 +381,13 @@ class TXPacket(Base):
             dest_longname = dest_longname,
             discord_guild_id = discord_interaction_info.guild_id,
             discord_channel_id = discord_interaction_info.channel_id,
-            discord_message_id = discord_interaction_info.message_id
+            discord_message_id = discord_interaction_info.message_id,
+            discord_user_id = discord_interaction_info.user_id,
+            discord_user_display_name = discord_interaction_info.user_display_name,
+            discord_user_global_name = discord_interaction_info.user_global_name,
+            discord_user_name = discord_interaction_info.user_name,
+            discord_user_mention = discord_interaction_info.user_mention,    
+            ts=datetime.datetime.now()
         )
         return db_pkt_obj
         
@@ -383,71 +429,177 @@ class MeshNodeDB(Base):
     publisher_mesh_node_num = Column(String)
     publisher_discord_bot_user_id = Column(String) # it is a big integer...
     
-    # all of the following info may or may not be there for each node
-    # no user info means we don't know the name yet
-    
     node_num = Column(Integer) # is an int in the node dict
     is_favorite = Column(Boolean)
-    snr = Column(Double)
-    lastHeard = Column(Double)
-    hopsAway = Column(Integer)
     
-    # "user" key
-    user_id = Column(String)
-    user_long_name = Column(String)
-    user_short_name = Column(String)
-    user_mac_addr = Column(String)
-    user_hw_model = Column(String)
-    user_public_key = Column(String)
+    # no user info means we don't know the name yet
+    user_id_nodedb = Column(String)
+    user_long_name_nodedb = Column(String)
+    user_short_name_nodedb = Column(String)
+    user_mac_addr_nodedb = Column(String)
+    user_hw_model_nodedb = Column(String)
+    user_public_key_nodedb = Column(String)
     
-    # "position" key
-    pos_latitude = Column(Double)
-    pos_latitudeI = Column(Integer)
-    pos_longitude = Column(Double)
-    pos_longitudeI = Column(Integer)
-    pos_altitude = Column(Integer) #?
-    pos_location_source = Column(String)
+    user_id_nodeinfo = Column(String)
+    user_long_name_nodeinfo = Column(String)
+    user_short_name_nodeinfo = Column(String)
+    user_mac_addr_nodeinfo = Column(String)
+    user_hw_model_nodeinfo = Column(String)
+    user_public_key_nodeinfo = Column(String)
     
-    # "deviceMetrics" key
-    device_metrics_battery_level = Column(Integer)
-    device_metrics_voltage = Column(Double)
-    device_metrics_channel_utilization = Column(Double)
-    device_metrics_air_utilization_tx = Column(Double)
-    device_metrics_uptime_seconds = Column(Integer)
+    crt_ts = Column(DateTime)
+    upd_ts_nodedb = Column(DateTime)
+    upd_ts_nodeinfo = Column(DateTime)
     
+    def __repr__(self):
+        return f'<{self.__class__.__name__}. {self.descriptive_name_nodedb_nodedb}>'
+   
+    @property
+    def descriptive_name(self):
+        return f'{self.user_id} | {self.short_name} | {self.long_name}'
+     
+    @property
+    def descriptive_name_nodedb(self):
+        return f'{self.user_id_nodedb} | {self.user_short_name_nodedb} | {self.user_long_name_nodedb}'
+    
+    @property
+    def descriptive_name_nodeinfo(self):
+        return f'{self.user_id_nodeinfo} | {self.user_short_name_nodeinfo} | {self.user_long_name_nodeinfo}'
+    
+    # prefer nodeinfo if it exists
+    @property
+    def user_id(self):
+        if self.user_id_nodeinfo:
+            return self.user_id_nodeinfo
+        else:
+            return self.user_id_nodedb
+        
+    @property
+    def long_name(self):
+        if self.user_long_name_nodeinfo:
+            return self.user_long_name_nodeinfo
+        else:
+            return self.user_long_name_nodedb
+        
+    @property
+    def short_name(self):
+        if self.user_short_name_nodeinfo:
+            return self.user_short_name_nodeinfo
+        else:
+            return self.user_short_name_nodedb
+        
+    @property
+    def mac_addr(self):
+        if self.user_mac_addr_nodeinfo:
+            return self.user_mac_addr_nodeinfo
+        else:
+            return self.user_mac_addr_nodedb
+        
+    @property
+    def hw_model(self):
+        if self.user_hw_model_nodeinfo:
+            return self.user_hw_model_nodeinfo
+        else:
+            return self.user_hw_model_nodedb
+        
+    @property
+    def public_key(self):
+        if self.user_public_key_nodeinfo:
+            return self.user_public_key_nodeinfo
+        else:
+            return self.user_public_key_nodedb
+        
+    
+    def update_from_nodeinfo(d, mesh_client):
+        nodenum = d.get('from')
+        if nodenum is not None:
+            matching_node = mesh_client._db_session.query(MeshNodeDB).filter_by(node_num=nodenum).first()
+            if matching_node:
+                decoded = d.get('decoded', {})
+                user_dict = decoded.get('user', {})
+                if user_dict:
+                    
+                    user_id = user_dict.get('id')
+                    if user_id is not None:
+                        matching_node.user_id_nodeinfo = user_id
+                        
+                    long_name = user_dict.get('longName')
+                    if long_name is not None:
+                        matching_node.user_long_name_nodeinfo = long_name
+                        
+                    short_name = user_dict.get('shortName')
+                    if short_name is not None:
+                        matching_node.user_short_name_nodedb = short_name
+                        
+                    mac_addr = user_dict.get('macaddr')
+                    if mac_addr is not None:
+                        matching_node.user_mac_addr_nodeinfo = mac_addr
+                        
+                    hw_model = user_dict.get('hwModel')
+                    if hw_model is not None:
+                        matching_node.user_hw_model_nodeinfo = hw_model
+                        
+                    public_key = user_dict.get('publicKey')
+                    if public_key is not None:
+                        matching_node.user_public_key_nodeinfo = public_key
+                
+                matching_node.upd_ts_nodeinfo = datetime.datetime.now()
+
+    def update_from_nodedb(node_num, d, mesh_client):
+        matching_node = mesh_client._db_session.query(MeshNodeDB).filter_by(node_num=node_num).first()
+        if matching_node:
+            is_favorite = d.get('isFavorite')
+            if is_favorite is not None:
+                matching_node.is_favorite = is_favorite
+                
+            user_dict = d.get('user', {})
+            
+            # "user" key
+            user_id = user_dict.get('id')
+            if user_id is not None:
+                matching_node.user_id_nodedb = user_id
+                
+            user_long_name = user_dict.get('longName')
+            if user_long_name is not None:
+                matching_node.user_long_name_nodedb = user_long_name
+                
+            user_short_name = user_dict.get('shortName')
+            if user_short_name is not None:
+                matching_node.user_short_name_nodeinfo = user_short_name
+                
+            user_mac_addr = user_dict.get('macaddr')
+            if user_mac_addr is not None:
+                matching_node.user_mac_addr_nodedb = user_mac_addr
+                
+            user_hw_model = user_dict.get('hwModel')
+            if user_hw_model is not None:
+                matching_node.user_hw_model_nodedb = user_hw_model
+                
+            user_public_key = user_dict.get('publicKey')
+            if user_public_key is not None:
+                matching_node.user_public_key_nodedb = user_public_key
+                
+            matching_node.upd_ts_nodedb = datetime.datetime.now()
+            
     def from_dict(d, mesh_client):
+        
+        user_dict = d.get('user', {})
+        
         return MeshNodeDB(
             publisher_mesh_node_num = mesh_client.my_node_info.node_num,
             publisher_discord_bot_user_id = mesh_client.discord_client.user.id,
             node_num = d.get('num'),
-            is_favorite = d.get('is_favorite'),
-            snr = d.get('snr'),
-            lastHeard = d.get('lastHeard'),
-            hopsAway = d.get('hopsAway'),
+            is_favorite = d.get('isFavorite'),
             
             # "user" key
-            user_id = d.get('user', {}).get('id'),
-            user_long_name = d.get('user', {}).get('longName'),
-            user_short_name = d.get('user', {}).get('shortName'),
-            user_mac_addr = d.get('user', {}).get('macaddr'),
-            user_hw_model = d.get('user', {}).get('hwModel'),
-            user_public_key = d.get('user', {}).get('publicKey'),
-            
-            # "position" key
-            pos_latitude = d.get('position', {}).get('latitude'),
-            pos_latitudeI = d.get('position', {}).get('latitudeI'),
-            pos_longitude = d.get('position', {}).get('longitude'),
-            pos_longitudeI = d.get('position', {}).get('longitudeI'),
-            pos_altitude = d.get('position', {}).get('altitude'),
-            pos_location_source = d.get('position', {}).get('locationSource'),
-            
-            # "deviceMetrics" key
-            device_metrics_battery_level = d.get('deviceMetrics', {}).get('batteryLevel'),
-            device_metrics_voltage = d.get('deviceMetrics', {}).get('voltage'),
-            device_metrics_channel_utilization = d.get('deviceMetrics', {}).get('channelUtilization'),
-            device_metrics_air_utilization_tx = d.get('deviceMetrics', {}).get('airUtilTx'),
-            device_metrics_uptime_seconds = d.get('deviceMetrics', {}).get('uptimeSeconds'),
+            user_id_nodedb = user_dict.get('id'),
+            user_long_name_nodedb = user_dict.get('longName'),
+            user_short_name_nodedb = user_dict.get('shortName'),
+            user_mac_addr_nodedb = user_dict.get('macaddr'),
+            user_hw_model_nodedb = user_dict.get('hwModel'),
+            user_public_key_nodedb = user_dict.get('publicKey'),
+            crt_ts = datetime.datetime.now(),
+            upd_ts_nodedb = datetime.datetime.now(),
+            upd_ts_nodeinfo = None,
         )
         
-
-
