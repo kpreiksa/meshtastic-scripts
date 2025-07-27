@@ -416,7 +416,7 @@ class MeshClient():
                     last_packet_str = f'{recent_packet_for_node.portnum} at {util.time_str_from_dt(recent_packet_for_node.ts)}'
                     nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | Last Packet: {last_packet_str} | {cnt_packets_from_node} Total Packets ({cnt_packets_24_hr} in past day)", recent_packet_for_node.ts])
                 else:
-                    nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | No Packets (Yet!)", datetime.datetime.fromtimestamp(0)])
+                    nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | No Packets in DB (Yet!)", datetime.datetime.fromtimestamp(0)])
 
         if len(nodelist) == 0:
             if time_limit is not None:
