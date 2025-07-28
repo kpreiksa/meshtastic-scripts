@@ -281,6 +281,7 @@ class DiscordBot(discord.Client):
             self.mesh_client.background_process()
 
             await asyncio.sleep(0.5)
+        logging.info('Discord client background task finished.')
 
     @staticmethod
     def only_in_channel(allowed_channel_id: int): # must pass allowed_channel_id as argument becaues this is compiled at import time, and you cannot pass self in
@@ -301,3 +302,23 @@ class DiscordBot(discord.Client):
             return wrapper
         return decorator
 
+    @staticmethod
+    def deprecated_command(error_msg: str): # must pass allowed_channel_id as argument becaues this is compiled at import time, and you cannot pass self in
+        def decorator(func):
+            @wraps(func)
+            async def wrapper(interaction: discord.Interaction, *args, **kwargs):
+                logging.error(f'Deprecated command called: {interaction.command.name} in channel {interaction.channel_id}')
+                desc = error_msg + f'\n\nOriginal command: `/{interaction.command.name} '
+                if interaction.data.get('options'):
+                    desc += ' '.join(str(option.get('value', '')) for option in interaction.data['options']) + '`'
+                else:
+                    desc += '`'
+                embed = discord.Embed(
+                    title='Deprecated Command',
+                    description=desc,
+                    color=util.MeshBotColors.error()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return await func(interaction, *args, **kwargs)
+            return wrapper
+        return decorator

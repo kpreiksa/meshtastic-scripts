@@ -473,62 +473,6 @@ class MeshClient():
             }
         )
 
-    def enqueue_send_nodenum(self, nodenum, message, discord_interaction_info):
-        """
-        Puts a message on the queue to be sent to a specific node (DM) by node number.
-
-        Args:
-            nodenum: Node num to DM.
-            message: Message text to send.
-            discord_interaction_info: Information about discord message to fascilitate replies.
-        """
-
-        self._enqueue_msg(
-            {
-                'msg_type': 'send_nodenum',
-                'nodenum': nodenum,
-                'message': message,
-                'discord_interaction_info': discord_interaction_info,
-            }
-        )
-
-    def enqueue_send_nodeid(self, nodeid, message, discord_interaction_info):
-        """
-        Puts a message on the queue to be sent to a specific node (DM) by ID.
-
-        Args:
-            nodeid: Node ID to DM.
-            message: Message text to send.
-            discord_interaction_info: Information about discord message to fascilitate replies.
-        """
-
-        self._enqueue_msg(
-            {
-                'msg_type': 'send_nodeid',
-                'nodeid': nodeid,
-                'message': message,
-                'discord_interaction_info': discord_interaction_info,
-            }
-        )
-
-    def enqueue_send_shortname(self, shortname, message, discord_interaction_info):
-        """
-        Puts a message on the queue to be sent to a specific node (DM) by short name.
-
-        Args:
-            shortname: shortname of Node to DM.
-            message: Message text to send.
-            discord_interaction_info: Information about discord message to fascilitate replies.
-        """
-        self._enqueue_msg(
-            {
-                'msg_type': 'send_shortname',
-                'shortname': shortname,
-                'message': message,
-                'discord_interaction_info': discord_interaction_info,
-            }
-        )
-
     def enqueue_send_dm(self, node, message, discord_interaction_info):
         """
         Puts a message on the queue to be sent to a specific node (DM).
@@ -694,7 +638,7 @@ class MeshClient():
             self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
         pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
         self._db_session.add(pkt)
-        
+
         try:
             self._db_session.commit() # save back to db
         except Exception as e:
@@ -709,7 +653,7 @@ class MeshClient():
             node_desc = self.get_node_descriptive_string(nodenum=nodenum)
             self.discord_client.enqueue_tx_confirmation_dm(discord_interaction_info.message_id, node_desc)
             self._db_session.add(pkt)
-            
+
             try:
                 self._db_session.commit() # save back to db
             except Exception as e:
@@ -723,7 +667,7 @@ class MeshClient():
             self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
             pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
             self._db_session.add(pkt)
-            
+
             try:
                 self._db_session.commit() # save back to db
             except Exception as e:
@@ -741,36 +685,13 @@ class MeshClient():
             if msg_type == 'send_channel':
                 channel = msg.get('channel')
                 self._send_channel(channel, message, discord_interaction_info)
-
-            elif msg_type == 'send_nodenum': # TODO This is no longer necessary with /dm
-                nodenum = msg.get('nodenum')
-                self._send_dm(nodenum, message, discord_interaction_info)
-            elif msg_type == 'send_nodeid': # TODO This is no longer necessary with /dm
-                nodeid = msg.get('nodeid')
-                nodenum = self.get_node_num(node_id=nodeid)
-                self._send_dm(nodenum, message, discord_interaction_info)
-            elif msg_type == 'send_shortname': # TODO This is no longer necessary with /dm
-                shortname = msg.get('shortname')
-                nodenum = self.get_node_num(shortname=shortname)
-                if nodenum:
-                    self._send_dm(nodenum, message, discord_interaction_info)
-                else:
-                    # get list of possible shortnames
-                    similar_nodes = self.get_similar_nodes(shortname)
-                    if similar_nodes:
-                        similar_nodes_str = ''
-                        for node in similar_nodes:
-                            similar_nodes_str += f'`{node[0]}`\n'
-                        self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node shortname: `{shortname}` is not found.\nDid you mean:\n{similar_nodes_str}')
-                    else:
-                        self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, f'Node shortname: `{shortname}` is not found. Please check the spelling and try again.')
-
             elif msg_type == 'send_dm':
                 node = msg.get('node')
                 node_type, proc_node = self.determine_node_type(node)
                 if node_type == 'shortname':
                     nodenum = self.get_node_num(shortname=proc_node)
                     if not nodenum:
+                        # TODO maybe move this into a separate function?
                         # get list of possible shortnames
                         similar_nodes = self.get_similar_nodes(proc_node)
                         if similar_nodes:
@@ -787,7 +708,6 @@ class MeshClient():
                 else:
                     error_str = f'Input `{node}` is an invalid node format.\nPlease use a shortname, node ID (starting with !), or node number.'
                     self.discord_client.enqueue_tx_error(discord_interaction_info.message_id, error_str)
-
             elif msg_type == 'telemetry_broadcast':
                 # TODO: Add ability to send on other channels if this even makes sense
                 self._send_telemetry(discord_interaction_info=discord_interaction_info)
