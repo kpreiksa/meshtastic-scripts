@@ -4,6 +4,7 @@ import queue
 import sys
 import time
 import re
+import threading
 from difflib import SequenceMatcher
 
 import datetime
@@ -29,12 +30,15 @@ class MeshClient():
     def onReceiveMesh(self, packet, interface):  # Called when a packet arrives from mesh.
 
         try:
+            pkt_id = packet.get('id')
             from_id = None
             if 'from' in packet and packet['from']:
                 from_id = '!' + hex(packet['from'])[2:]
             portnum = packet.get('decoded', {}).get('portnum')
 
             db_packet = RXPacket.from_dict(packet, self)
+            
+            logging.info(f"START onReceiveMesh: {db_packet.portnum} packet (id: [{pkt_id}]) received from: {db_packet.src_descriptive}") # For debugging.
             self._db_session.add(db_packet)
             try:
                 self._db_session.commit() # save back to db
@@ -43,7 +47,6 @@ class MeshClient():
                 self._db_session.rollback()
 
             if db_packet.is_text_message:
-                logging.info(f"Text message packet received from: {db_packet.src_descriptive}") # For debugging.
                 self.discord_client.enqueue_mesh_text_msg_received(db_packet)
 
             elif db_packet.portnum == 'NODEINFO_APP':
@@ -57,10 +60,13 @@ class MeshClient():
             elif db_packet.portnum == 'ROUTING_APP':
                 if db_packet.priority == 'ACK':
                     if db_packet.request_id:
-
                         logging.info(f'Got ACK from {db_packet.src_descriptive}. Request ID: {db_packet.request_id}')
 
+                        lock_acquired = self._tx_ack_lock.acquire(timeout=10)
+                        if not lock_acquired:
+                            logging.error(f'Failed to acquire lock')
                         matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=db_packet.request_id).first()
+                        self._tx_ack_lock.release()
                         if matching_packet:
                             # if we find the packet in the db matching the request ID of the ACK... update it to say
                             # it is acknowledged
@@ -90,7 +96,9 @@ class MeshClient():
                         logging.info(f'Got packet with encrypted attribute, and unable to decode. From: {from_id}')
 
         except Exception as e:
-            logging.error(f'Error parsing packet. Type: {portnum}. From: {from_id}. Exception: {str(type(e))}. Exception Detail: {e}')
+            logging.error(f'Error parsing packet. Type: {portnum}. From: {from_id}. Packet ID: {pkt_id}. Exception: {str(type(e))}. Exception Detail: {e}')
+        finally:
+            logging.info(f"END onReceiveMesh: {db_packet.portnum} packet (id: [{pkt_id}]) received from: {db_packet.src_descriptive}") # For debugging.
 
     def onConnectionMesh(self, interface, topic=None):
         # interface, obj
@@ -157,7 +165,11 @@ class MeshClient():
 
         logging.info(f'Got Response to packet: {db_packet.request_id} from {db_packet.src_descriptive})')
 
+        lock_acquired = self._tx_ack_lock.acquire(timeout=10)
+        if not lock_acquired:
+            logging.error(f'Failed to acquire lock')
         matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=db_packet.request_id).first()
+        self._tx_ack_lock.release()
         if matching_packet:
             # if we find the packet in the db matching the request ID of the ACK... update it to say
             # it is acknowledged
@@ -199,6 +211,8 @@ class MeshClient():
         self.nodes = {}
         self.myNodeInfo = None #TODO: switch this to use the node object created onConnectionMesh
         self.my_node_info = None
+        
+        self._tx_ack_lock = threading.Lock()
 
     def connect(self):
         """Connect to meshtastic device and subscribe to events for processing."""
@@ -633,46 +647,49 @@ class MeshClient():
 
     def _send_channel(self, channel, message, discord_interaction_info=None):
         logging.info(f'Sending message to channel: {channel}')
-        sent_packet = self.iface.sendText(message, channelIndex=channel, wantResponse=True, wantAck=True)
-        if sent_packet:
-            self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
-        pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
-        self._db_session.add(pkt)
-
-        try:
-            self._db_session.commit() # save back to db
-        except Exception as e:
-            logging.error(f'DB ROLLBACK: {str(e)}')
-            self._db_session.rollback()
+        with self._tx_ack_lock:
+            sent_packet = self.iface.sendText(message, channelIndex=channel, wantResponse=True, wantAck=True)
+            if sent_packet:
+                self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
+            pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
+            self._db_session.add(pkt)
+            try:
+                self._db_session.commit() # save back to db
+            except Exception as e:
+                logging.error(f'DB ROLLBACK: {str(e)}')
+                self._db_session.rollback()
 
     def _send_dm(self, nodenum, message, discord_interaction_info=None):
         logging.info(f'Sending message to: {nodenum}')
-        sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
-        if sent_packet:
-            pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
-            node_desc = self.get_node_descriptive_string(nodenum=nodenum)
-            self.discord_client.enqueue_tx_confirmation_dm(discord_interaction_info.message_id, node_desc)
-            self._db_session.add(pkt)
+        with self._tx_ack_lock:
+            sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
+            if sent_packet:
+                pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
+                node_desc = self.get_node_descriptive_string(nodenum=nodenum)
+                self.discord_client.enqueue_tx_confirmation_dm(discord_interaction_info.message_id, node_desc)
+                
+                self._db_session.add(pkt)
 
-            try:
-                self._db_session.commit() # save back to db
-            except Exception as e:
-                logging.error(f'DB ROLLBACK: {str(e)}')
-                self._db_session.rollback()
+                try:
+                    self._db_session.commit() # save back to db
+                except Exception as e:
+                    logging.error(f'DB ROLLBACK: {str(e)}')
+                    self._db_session.rollback()
 
     def _send_telemetry(self, nodenum=None, discord_interaction_info=None):
-        sent_packet = self.iface.sendTelemetry(wantResponse=True)
-        # sent_packet = self.iface.sendTelemetry(nodenum, wantResponse=True)
-        if sent_packet:
-            self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
-            pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
-            self._db_session.add(pkt)
-
-            try:
-                self._db_session.commit() # save back to db
-            except Exception as e:
-                logging.error(f'DB ROLLBACK: {str(e)}')
-                self._db_session.rollback()
+        with self._tx_ack_lock:
+            sent_packet = self.iface.sendTelemetry(wantResponse=True)
+            # sent_packet = self.iface.sendTelemetry(nodenum, wantResponse=True)
+            if sent_packet:
+                self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
+                pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
+                
+                self._db_session.add(pkt)
+                try:
+                    self._db_session.commit() # save back to db
+                except Exception as e:
+                    logging.error(f'DB ROLLBACK: {str(e)}')
+                    self._db_session.rollback()
 
     # queue processing/background loop
 
