@@ -71,6 +71,8 @@ Follow `config_example.json`, rename it `config.json`, remove any comments.
 
 No docs
 
+If you start getting errors after an update, its probably because we broke the db schema; delete the db file and restart the bot to create a new one.
+
 ## Quirks and Notes
 
 We've tested/developed this mainly using serial connections. We know BLE and TCP work, but not a lot of development. We're working on reconnection/disconnection logic. There are some weird behaviors when TCP/BLE connected nodes disconnect.
