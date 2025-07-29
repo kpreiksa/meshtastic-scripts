@@ -4,24 +4,14 @@ Welcome to the Meshtastic Scripts repository! This collection of Python scripts 
 
 ## Features ✨
 
-- **Node Configuration**: Easily configure your Meshtastic nodes with custom settings.
-- **Data Interaction**: Send and receive data to and from your Meshtastic nodes.
-- **Automation**: Automate common tasks and streamline your workflow.
+- **Discord Bot**: See [Bot Readme](discord-bot/README.md) for details
 
 ## Requirements 📋
 
 - Python 3.6 or higher
 - Meshtastic Python library
-
-## Installation 💻
-
-Clone the repository and install the required dependencies:
-
-```bash
-git clone https://github.com/kpreiksa/meshtastic-scripts.git
-cd meshtastic-scripts
-pip install -r requirements.txt
-```
+- SQL Academy library
+- Discord library
 
 ## Troubleshooting 🛠️
 If you encounter any issues while using the scripts, please check the following:
