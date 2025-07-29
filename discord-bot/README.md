@@ -9,7 +9,7 @@ Originally based on [Kavitate's bot](https://github.com/Kavitate/Meshtastic-Disc
 3. Database of all messages received and Nodes
 4. List active nodes (in the last X minutes)
 5. List all nodes
-6. Lookup Ham callsigns7
+6. Lookup Ham callsigns
 7. Map a specific node's last location
 8. Lookup a node's info in the database
 
