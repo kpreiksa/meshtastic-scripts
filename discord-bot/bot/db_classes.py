@@ -10,6 +10,8 @@ class RXPacket(Base):
     __tablename__ = 'rx_packets'  # Name of the table in the database
     id = Column(Integer, primary_key=True)
     
+    pkt_id = Column(Integer) # from meshtastic firmware
+    
     publisher_mesh_node_num = Column(String)
     publisher_discord_bot_user_id = Column(String) # it is a big integer...
     
@@ -122,6 +124,7 @@ class RXPacket(Base):
         channel = d.get('channel')
         src_num = d.get('from')
         dst_num = d.get('to')
+        pkt_id = d.get('id')
         
         # attempt to get short and long names
         try:
@@ -264,6 +267,8 @@ class RXPacket(Base):
                 pass
         
         out = RXPacket(
+            
+            pkt_id = pkt_id,
             
             publisher_mesh_node_num = publisher_mesh_node_num,
             publisher_discord_bot_user_id = publisher_discord_bot_user_id,
