@@ -263,11 +263,13 @@ class DiscordBot(discord.Client):
                 if isinstance(meshmessage, tuple):
                     meshmessage = meshmessage[0]
                     close_after = meshmessage[1]
-                    
-                if isinstance(meshmessage, discord.Embed):
-                    await self.channel.send(embed=meshmessage)
                 else:
-                    await self.channel.send(meshmessage)
+                    msg = meshmessage
+                    
+                if isinstance(msg, discord.Embed):
+                    await self.channel.send(embed=msg)
+                else:
+                    await self.channel.send(msg)
                     
                 if close_after:
                     asyncio.sleep(0.1)
