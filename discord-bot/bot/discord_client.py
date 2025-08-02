@@ -39,8 +39,8 @@ class DiscordBot(discord.Client):
     def check_channel_id(self, other_channel_id):
         return other_channel_id == self.dis_channel_id
 
-    def enqueue_msg(self, msg):
-        self._discordqueue.put(msg)
+    def enqueue_msg(self, msg, close_after=False):
+        self._discordqueue.put((msg, close_after))
 
     def enqueue_ack(self, ack_obj):
         self._enqueue_mesh_response({
@@ -108,7 +108,8 @@ class DiscordBot(discord.Client):
         embed = discord.Embed(title="Lost Comm", description=f'Lost Comm: {str(exception_obj)}', color=util.MeshBotColors.error())
         current_time = util.get_current_time_str()
         embed.set_footer(text=f"{current_time}")
-        self.enqueue_msg(embed)
+        self.enqueue_msg(embed, close_after = True)
+        
 
     def enqueue_tx_error(self, discord_message_id, error_text):
         self._enqueue_mesh_response({
@@ -258,10 +259,20 @@ class DiscordBot(discord.Client):
             # handle messages coming from mesh to discord
             try:
                 meshmessage = self._discordqueue.get_nowait()
+                close_after = False
+                if isinstance(meshmessage, tuple):
+                    meshmessage = meshmessage[0]
+                    close_after = meshmessage[1]
+                    
                 if isinstance(meshmessage, discord.Embed):
                     await self.channel.send(embed=meshmessage)
                 else:
                     await self.channel.send(meshmessage)
+                    
+                if close_after:
+                    asyncio.sleep(0.1)
+                    asyncio.run(self.close())
+                    
                 self._discordqueue.task_done()
             except queue.Empty:
                 pass
