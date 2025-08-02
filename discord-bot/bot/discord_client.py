@@ -261,7 +261,7 @@ class DiscordBot(discord.Client):
                 meshmessage = self._discordqueue.get_nowait()
                 close_after = False
                 if isinstance(meshmessage, tuple):
-                    meshmessage = meshmessage[0]
+                    msg = meshmessage[0]
                     close_after = meshmessage[1]
                 else:
                     msg = meshmessage
