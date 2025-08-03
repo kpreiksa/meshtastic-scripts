@@ -15,7 +15,7 @@
     "ble_node": "NODE_NAME_OR_BT"
   },
   "database_info": {
-    "type": "postgresql", // sqlite or postgresql, default is sqlite (local file). With sqlite, only db_name is used
+    "type": "postgres", // sqlite or postgres, default is sqlite (local file). With sqlite, only db_name is used
     "host": "192.168.1.1",
     "port": "5432", // Default is 5432
     "username": "user",

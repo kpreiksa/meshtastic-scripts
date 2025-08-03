@@ -81,7 +81,7 @@ class Config():
         def _db_connection_string(self):
             if self.db_type == 'sqlite':
                 return f'sqlite:///{self.db_name}'
-            elif self.db_type == 'postgres':
+            elif self.db_type == 'postgres' or self.db_type == 'postgresql':
                 return f'postgresql+psycopg2://{self._db_username}:{self._db_password}@{self.db_host}:{self.db_port}/{self.db_name}'
             else:
                 raise ValueError(f'Unsupported database type: {self.db_type}')
@@ -134,7 +134,7 @@ class Config():
         INTERACE_PORT = os.environ.get('INTERACE_PORT', '4403')
         INTERACE_BLE_NODE = os.environ.get('INTERACE_BLE_NODE')
         # database info
-        DATABASE_TYPE = os.environ.get('DB_TYPE', 'sqlite')  # sqlite or postgresql
+        DATABASE_TYPE = os.environ.get('DB_TYPE', 'sqlite')  # sqlite or postgresql/postgres
         DB_HOST = os.environ.get('DB_HOST')
         DB_PORT = os.environ.get('DB_PORT', '5432')  # Default is 5432
         DB_USERNAME = os.environ.get('DB_USERNAME')
