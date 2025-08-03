@@ -37,7 +37,7 @@ class MeshClient():
             portnum = packet.get('decoded', {}).get('portnum')
 
             db_packet = RXPacket.from_dict(packet, self)
-            
+
             logging.info(f"START onReceiveMesh: {db_packet.portnum} packet (id: [{pkt_id}]) received from: {db_packet.src_descriptive}") # For debugging.
             with self._db_lock:
                 self._db_session.add(db_packet)
@@ -104,14 +104,14 @@ class MeshClient():
 
     def onConnectionMesh(self, interface, topic=None):
         # called the first time we connect to the node. Initialize the db from the device's node db
-        
+
         logging.info('onConnectionMesh: Connection Established')
 
         self.myNodeInfo = interface.getMyNodeInfo()
         self.my_node_info = MeshNode(self.myNodeInfo) # TODO: this is the only place this is used. probably remove this class and reference it from the DB or soemthing
 
         self.nodes = self.iface.nodes # this should take precedence
-        
+
         with self._db_lock:
 
             # use nodesByNum because it will include ones that we do not have userInfo for
@@ -139,6 +139,8 @@ class MeshClient():
         logging.info(f'Long Name:             {self.my_node_info.user_info.long_name}')
         logging.info(f'MAC Addr:              {self.my_node_info.user_info.mac_address}')
         logging.info(f'HW Model:              {self.my_node_info.user_info.hw_model}')
+        logging.info(f'Battery Level:         {self.my_node_info.device_metrics.battery_level}%')
+        logging.info(f'Battery Voltage:       {self.my_node_info.device_metrics.voltage}V')
         logging.info(f'Device Role:           {interface.localNode.localConfig.device.role}')
         logging.info(f'Node Info Periodicity: {interface.localNode.localConfig.device.node_info_broadcast_secs}')
         logging.info(f'Modem Preset:          {interface.localNode.localConfig.lora.modem_preset} - {self.config.channel_names[interface.localNode.localConfig.lora.modem_preset]}') # TODO make sure this isn't unique to serial_interface
@@ -147,7 +149,7 @@ class MeshClient():
 
         node_descriptor = f'{self.my_node_info.user_info.user_id} | {self.my_node_info.user_info.short_name} | {self.my_node_info.user_info.long_name}'
         self.discord_client.enqueue_mesh_ready(node_descriptor, interface.localNode.localConfig.lora.modem_preset)
-        
+
         # only subscribe to the other events once connection is fully established
         logging.info('Subscribing to mesh events')
         pub.subscribe(self.onReceiveMesh, "meshtastic.receive")
@@ -191,7 +193,7 @@ class MeshClient():
 
             implicit_ack = db_packet.request_id == self.my_node_info.user_info.user_id
             ack_obj = ACK.from_rx_packet(db_packet, self)
-            
+
             with self._db_lock:
 
                 self._db_session.add(ack_obj)
@@ -227,7 +229,7 @@ class MeshClient():
         self.nodes = {}
         self.myNodeInfo = None #TODO: switch this to use the node object created onConnectionMesh
         self.my_node_info = None
-        
+
         self._tx_ack_lock = threading.Lock()
         self._db_lock = threading.Lock()
 
@@ -237,7 +239,7 @@ class MeshClient():
         interface_info = self.config.interface_info
 
         logging.info(f'Connecting with interface: {interface_info.connection_descriptor}')
-        
+
         # subscribe to the connection.established event first - since we do some setup in that,
         # it needs to be ready to be called when connection is first established
         logging.info('Subscribing to connection.established event')
@@ -268,7 +270,7 @@ class MeshClient():
         else:
             logging.info(f'Unsupported interface: {interface_info.interface_type}')
             return
-        
+
 
 
     def link_discord(self, discord_client):
@@ -693,7 +695,7 @@ class MeshClient():
                     pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
                     node_desc = self.get_node_descriptive_string(nodenum=nodenum)
                     self.discord_client.enqueue_tx_confirmation_dm(discord_interaction_info.message_id, node_desc)
-                    
+
                     self._db_session.add(pkt)
 
                     try:
@@ -710,7 +712,7 @@ class MeshClient():
                 if sent_packet:
                     self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
                     pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
-                    
+
                     self._db_session.add(pkt)
                     try:
                         self._db_session.commit() # save back to db
@@ -795,7 +797,7 @@ class MeshClient():
 
         #TODO: use Node obj created in onConnectionMesh. Possibly make it auto-updating when accessed
         # instead of updating here
-        
+
         if self.iface.isConnected:
             self.myNodeInfo = self.iface.getMyNodeInfo()
 
