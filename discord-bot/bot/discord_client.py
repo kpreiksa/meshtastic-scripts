@@ -109,7 +109,7 @@ class DiscordBot(discord.Client):
         current_time = util.get_current_time_str()
         embed.set_footer(text=f"{current_time}")
         self.enqueue_msg(embed, close_after = True)
-        
+
 
     def enqueue_tx_error(self, discord_message_id, error_text):
         self._enqueue_mesh_response({
@@ -265,16 +265,16 @@ class DiscordBot(discord.Client):
                     close_after = meshmessage[1]
                 else:
                     msg = meshmessage
-                    
+
                 if isinstance(msg, discord.Embed):
                     await self.channel.send(embed=msg)
                 else:
                     await self.channel.send(msg)
-                    
+
                 if close_after:
-                    asyncio.sleep(0.1)
-                    asyncio.run(self.close())
-                    
+                    await asyncio.sleep(0.1)
+                    await asyncio.run(self.close())
+
                 self._discordqueue.task_done()
             except queue.Empty:
                 pass
