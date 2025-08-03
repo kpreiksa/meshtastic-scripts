@@ -182,7 +182,7 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
 
     logging.info(f'/nodeinfo received, doing query for node ID: {node_id}')
     current_time = get_current_time_str()
-    
+
     await interaction.response.defer()
 
     embeds = []
@@ -321,6 +321,8 @@ async def describe_self(interaction: discord.Interaction):
         f'**Long Name:** {mesh_client.my_node_info.user_info.long_name}',
         f'**MAC Address:** {mesh_client.my_node_info.user_info.mac_address}',
         f'**HW Model:** {mesh_client.my_node_info.user_info.hw_model}',
+        f'**Battery Level:** {mesh_client.my_node_info.device_metrics.battery_level}%',
+        f'**Battery Voltage:** {mesh_client.my_node_info.device_metrics.voltage}V',
     ]
 
     embed = discord.Embed(title='Local Node Information', description='\n'.join(text))
