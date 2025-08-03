@@ -182,6 +182,8 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
 
     logging.info(f'/nodeinfo received, doing query for node ID: {node_id}')
     current_time = get_current_time_str()
+    
+    await interaction.response.defer()
 
     embeds = []
 
@@ -305,7 +307,7 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
         embeds = [x[0] for x in embeds]
         embeds.insert(0, ni_embed)
 
-    out = await interaction.response.send_message(embeds=embeds)
+    out = await interaction.followup.send(embeds=embeds)
 
 
 @discord_client.tree.command(name="self", description="Lists info about directly connected node.")

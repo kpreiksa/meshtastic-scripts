@@ -39,12 +39,13 @@ class MeshClient():
             db_packet = RXPacket.from_dict(packet, self)
             
             logging.info(f"START onReceiveMesh: {db_packet.portnum} packet (id: [{pkt_id}]) received from: {db_packet.src_descriptive}") # For debugging.
-            self._db_session.add(db_packet)
-            try:
-                self._db_session.commit() # save back to db
-            except Exception as e:
-                logging.error(f'DB ROLLBACK: {str(e)}')
-                self._db_session.rollback()
+            with self._db_lock:
+                self._db_session.add(db_packet)
+                try:
+                    self._db_session.commit() # save back to db
+                except Exception as e:
+                    logging.error(f'DB ROLLBACK: {str(e)}')
+                    self._db_session.rollback()
 
             if db_packet.is_text_message:
                 self.discord_client.enqueue_mesh_text_msg_received(db_packet)
@@ -61,12 +62,12 @@ class MeshClient():
                 if db_packet.priority == 'ACK':
                     if db_packet.request_id:
                         logging.info(f'Got ACK from {db_packet.src_descriptive}. Request ID: {db_packet.request_id}')
-
-                        lock_acquired = self._tx_ack_lock.acquire(timeout=10)
-                        if not lock_acquired:
-                            logging.error(f'Failed to acquire lock')
-                        matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=db_packet.request_id).first()
-                        self._tx_ack_lock.release()
+                        with self._db_lock:
+                            lock_acquired = self._tx_ack_lock.acquire(timeout=10)
+                            if not lock_acquired:
+                                logging.error(f'Failed to acquire lock')
+                            matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=db_packet.request_id).first()
+                            self._tx_ack_lock.release()
                         if matching_packet:
                             # if we find the packet in the db matching the request ID of the ACK... update it to say
                             # it is acknowledged
@@ -74,13 +75,14 @@ class MeshClient():
                             matching_packet.acknowledge_received = True
                             implicit_ack = db_packet.src_id == self.my_node_info.user_info.user_id
                             ack_obj = ACK.from_rx_packet(db_packet, self)
-                            self._db_session.add(ack_obj)
-                            matching_packet.acks.append(ack_obj)
-                            try:
-                                self._db_session.commit() # save back to db
-                            except Exception as e:
-                                logging.error(f'DB ROLLBACK: {str(e)}')
-                                self._db_session.rollback()
+                            with self._db_lock:
+                                self._db_session.add(ack_obj)
+                                matching_packet.acks.append(ack_obj)
+                                try:
+                                    self._db_session.commit() # save back to db
+                                except Exception as e:
+                                    logging.error(f'DB ROLLBACK: {str(e)}')
+                                    self._db_session.rollback()
 
                             self.discord_client.enqueue_ack(ack_obj)
                         else:
@@ -101,29 +103,33 @@ class MeshClient():
             logging.info(f"END onReceiveMesh: {db_packet.portnum} packet (id: [{pkt_id}]) received from: {db_packet.src_descriptive}") # For debugging.
 
     def onConnectionMesh(self, interface, topic=None):
-        # interface, obj
+        # called the first time we connect to the node. Initialize the db from the device's node db
+        
+        logging.info('onConnectionMesh: Connection Established')
 
         self.myNodeInfo = interface.getMyNodeInfo()
         self.my_node_info = MeshNode(self.myNodeInfo) # TODO: this is the only place this is used. probably remove this class and reference it from the DB or soemthing
 
         self.nodes = self.iface.nodes # this should take precedence
+        
+        with self._db_lock:
 
-        # use nodesByNum because it will include ones that we do not have userInfo for
-        for node_num, node in self.iface.nodesByNum.items():
-            # see if node with num exists in db
-            matching_node = self._db_session.query(MeshNodeDB).filter_by(node_num=node_num).first()
-            if matching_node:
-                pass
-                #MeshNodeDB.update_from_nodedb(node_num, node, self)
-            else:
-                new_node = MeshNodeDB.from_dict(node, self)
-                self._db_session.add(new_node)
-        # should only need to commit once
-        try:
-            self._db_session.commit() # save back to db
-        except Exception as e:
-            logging.error(f'DB ROLLBACK: {str(e)}')
-            self._db_session.rollback()
+            # use nodesByNum because it will include ones that we do not have userInfo for
+            for node_num, node in self.iface.nodesByNum.items():
+                # see if node with num exists in db
+                matching_node = self._db_session.query(MeshNodeDB).filter_by(node_num=node_num).first()
+                if matching_node:
+                    pass
+                    #MeshNodeDB.update_from_nodedb(node_num, node, self)
+                else:
+                    new_node = MeshNodeDB.from_dict(node, self)
+                    self._db_session.add(new_node)
+            # should only need to commit once
+            try:
+                self._db_session.commit() # save back to db
+            except Exception as e:
+                logging.error(f'DB ROLLBACK: {str(e)}')
+                self._db_session.rollback()
 
         logging.info('***CONNECTED***')
         logging.info('***************')
@@ -141,6 +147,12 @@ class MeshClient():
 
         node_descriptor = f'{self.my_node_info.user_info.user_id} | {self.my_node_info.user_info.short_name} | {self.my_node_info.user_info.long_name}'
         self.discord_client.enqueue_mesh_ready(node_descriptor, interface.localNode.localConfig.lora.modem_preset)
+        
+        # only subscribe to the other events once connection is fully established
+        logging.info('Subscribing to mesh events')
+        pub.subscribe(self.onReceiveMesh, "meshtastic.receive")
+        pub.subscribe(self.onNodeUpdated, "meshtastic.node.updated")
+        pub.subscribe(self.onDisconnect, 'meshtastic.connection.lost')
 
     def onDisconnect(self, interface):
         # this happens when a node gets updated... we should update the database
@@ -156,20 +168,22 @@ class MeshClient():
         # if there is a request Id... look it up in the Db and acknowledge
 
         db_packet = RXPacket.from_dict(d, self)
-        self._db_session.add(db_packet)
-        try:
-            self._db_session.commit() # save back to db
-        except Exception as e:
-            logging.error(f'DB ROLLBACK: {str(e)}')
-            self._db_session.rollback()
+        with self._db_lock:
+            self._db_session.add(db_packet)
+            try:
+                self._db_session.commit() # save back to db
+            except Exception as e:
+                logging.error(f'DB ROLLBACK: {str(e)}')
+                self._db_session.rollback()
 
-        logging.info(f'Got Response to packet: {db_packet.request_id} from {db_packet.src_descriptive})')
+        logging.info(f'onMsgResponse: Got Response to packet: {db_packet.request_id} from {db_packet.src_descriptive})')
 
-        lock_acquired = self._tx_ack_lock.acquire(timeout=10)
-        if not lock_acquired:
-            logging.error(f'Failed to acquire lock')
-        matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=db_packet.request_id).first()
-        self._tx_ack_lock.release()
+        with self._db_lock:
+            lock_acquired = self._tx_ack_lock.acquire(timeout=10)
+            if not lock_acquired:
+                logging.error(f'Failed to acquire lock')
+            matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=db_packet.request_id).first()
+            self._tx_ack_lock.release()
         if matching_packet:
             # if we find the packet in the db matching the request ID of the ACK... update it to say
             # it is acknowledged
@@ -177,14 +191,16 @@ class MeshClient():
 
             implicit_ack = db_packet.request_id == self.my_node_info.user_info.user_id
             ack_obj = ACK.from_rx_packet(db_packet, self)
+            
+            with self._db_lock:
 
-            self._db_session.add(ack_obj)
-            matching_packet.acks.append(ack_obj)
-            try:
-                self._db_session.commit() # save back to db
-            except Exception as e:
-                logging.error(f'DB ROLLBACK: {str(e)}')
-                self._db_session.rollback()
+                self._db_session.add(ack_obj)
+                matching_packet.acks.append(ack_obj)
+                try:
+                    self._db_session.commit() # save back to db
+                except Exception as e:
+                    logging.error(f'DB ROLLBACK: {str(e)}')
+                    self._db_session.rollback()
 
             # enqueue response to be sent back to discord
             self.discord_client.enqueue_ack(ack_obj)
@@ -213,6 +229,7 @@ class MeshClient():
         self.my_node_info = None
         
         self._tx_ack_lock = threading.Lock()
+        self._db_lock = threading.Lock()
 
     def connect(self):
         """Connect to meshtastic device and subscribe to events for processing."""
@@ -220,6 +237,11 @@ class MeshClient():
         interface_info = self.config.interface_info
 
         logging.info(f'Connecting with interface: {interface_info.connection_descriptor}')
+        
+        # subscribe to the connection.established event first - since we do some setup in that,
+        # it needs to be ready to be called when connection is first established
+        logging.info('Subscribing to connection.established event')
+        pub.subscribe(self.onConnectionMesh, "meshtastic.connection.established")
 
         if interface_info.interface_type == 'serial':
             try:
@@ -246,11 +268,8 @@ class MeshClient():
         else:
             logging.info(f'Unsupported interface: {interface_info.interface_type}')
             return
+        
 
-        pub.subscribe(self.onReceiveMesh, "meshtastic.receive")
-        pub.subscribe(self.onConnectionMesh, "meshtastic.connection.established")
-        pub.subscribe(self.onNodeUpdated, "meshtastic.node.updated")
-        pub.subscribe(self.onDisconnect, 'meshtastic.connection.lost')
 
     def link_discord(self, discord_client):
         self.discord_client = discord_client
@@ -407,24 +426,29 @@ class MeshClient():
         if time_limit is not None:
             # get all packets in the last x minutes, then get the node info
             active_after = datetime.datetime.now() - datetime.timedelta(minutes=int(time_limit))
-            node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.ts >= active_after).distinct().all()
+            with self._db_lock:
+                node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.ts >= active_after).distinct().all()
             nodelist_start = f"**Nodes seen in the last {time_limit} minutes:**\n"
             node_nums = [x[0] for x in node_nums]
             # get nodes from the node db
-            nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.node_num.in_(node_nums)).all()
+            with self._db_lock:
+                nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.node_num.in_(node_nums)).all()
         else:
-            node_nums = self._db_session.query(RXPacket.src_num).distinct().all()
+            with self._db_lock:
+                node_nums = self._db_session.query(RXPacket.src_num).distinct().all()
             nodelist_start = f"**All Nodes in DB:**\n"
-            nodes = self._db_session.query(MeshNodeDB).all()
+            with self._db_lock:
+                nodes = self._db_session.query(MeshNodeDB).all()
 
         nodelist = []
         for node in nodes:
             if node.node_num != self.my_node_info.node_num: # ignore ourselves
                 # add lastHeard via latest packet RX'd and its type
-                recent_packet_for_node = self._db_session.query(RXPacket).filter(RXPacket.src_num == node.node_num).order_by(RXPacket.ts.desc()).first()
-                hr_ago_24 = datetime.datetime.now() - datetime.timedelta(days=1)
-                cnt_packets_24_hr = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.ts >= hr_ago_24).count()
-                cnt_packets_from_node = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).count()
+                with self._db_lock:
+                    recent_packet_for_node = self._db_session.query(RXPacket).filter(RXPacket.src_num == node.node_num).order_by(RXPacket.ts.desc()).first()
+                    hr_ago_24 = datetime.datetime.now() - datetime.timedelta(days=1)
+                    cnt_packets_24_hr = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.ts >= hr_ago_24).count()
+                    cnt_packets_from_node = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).count()
                 last_packet_str = ''
                 if recent_packet_for_node:
                     last_packet_str = f'{recent_packet_for_node.portnum} at {util.time_str_from_dt(recent_packet_for_node.ts)}'
@@ -647,49 +671,52 @@ class MeshClient():
 
     def _send_channel(self, channel, message, discord_interaction_info=None):
         logging.info(f'Sending message to channel: {channel}')
-        with self._tx_ack_lock:
-            sent_packet = self.iface.sendText(message, channelIndex=channel, wantResponse=True, wantAck=True)
-            if sent_packet:
-                self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
-            pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
-            self._db_session.add(pkt)
-            try:
-                self._db_session.commit() # save back to db
-            except Exception as e:
-                logging.error(f'DB ROLLBACK: {str(e)}')
-                self._db_session.rollback()
+        with self._db_lock:
+            with self._tx_ack_lock:
+                sent_packet = self.iface.sendText(message, channelIndex=channel, wantResponse=True, wantAck=True)
+                if sent_packet:
+                    self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
+                pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
+                self._db_session.add(pkt)
+                try:
+                    self._db_session.commit() # save back to db
+                except Exception as e:
+                    logging.error(f'DB ROLLBACK: {str(e)}')
+                    self._db_session.rollback()
 
     def _send_dm(self, nodenum, message, discord_interaction_info=None):
         logging.info(f'Sending message to: {nodenum}')
-        with self._tx_ack_lock:
-            sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
-            if sent_packet:
-                pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
-                node_desc = self.get_node_descriptive_string(nodenum=nodenum)
-                self.discord_client.enqueue_tx_confirmation_dm(discord_interaction_info.message_id, node_desc)
-                
-                self._db_session.add(pkt)
+        with self._db_lock:
+            with self._tx_ack_lock:
+                sent_packet = self.iface.sendText(message, destinationId=nodenum, wantResponse=True, wantAck=True, onResponse=self.onMsgResponse)
+                if sent_packet:
+                    pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
+                    node_desc = self.get_node_descriptive_string(nodenum=nodenum)
+                    self.discord_client.enqueue_tx_confirmation_dm(discord_interaction_info.message_id, node_desc)
+                    
+                    self._db_session.add(pkt)
 
-                try:
-                    self._db_session.commit() # save back to db
-                except Exception as e:
-                    logging.error(f'DB ROLLBACK: {str(e)}')
-                    self._db_session.rollback()
+                    try:
+                        self._db_session.commit() # save back to db
+                    except Exception as e:
+                        logging.error(f'DB ROLLBACK: {str(e)}')
+                        self._db_session.rollback()
 
     def _send_telemetry(self, nodenum=None, discord_interaction_info=None):
-        with self._tx_ack_lock:
-            sent_packet = self.iface.sendTelemetry(wantResponse=True)
-            # sent_packet = self.iface.sendTelemetry(nodenum, wantResponse=True)
-            if sent_packet:
-                self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
-                pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
-                
-                self._db_session.add(pkt)
-                try:
-                    self._db_session.commit() # save back to db
-                except Exception as e:
-                    logging.error(f'DB ROLLBACK: {str(e)}')
-                    self._db_session.rollback()
+        with self._db_lock:
+            with self._tx_ack_lock:
+                sent_packet = self.iface.sendTelemetry(wantResponse=True)
+                # sent_packet = self.iface.sendTelemetry(nodenum, wantResponse=True)
+                if sent_packet:
+                    self.discord_client.enqueue_tx_confirmation(discord_interaction_info.message_id)
+                    pkt = TXPacket.from_sent_packet(sent_packet=sent_packet, discord_interaction_info=discord_interaction_info, mesh_client=self)
+                    
+                    self._db_session.add(pkt)
+                    try:
+                        self._db_session.commit() # save back to db
+                    except Exception as e:
+                        logging.error(f'DB ROLLBACK: {str(e)}')
+                        self._db_session.rollback()
 
     # queue processing/background loop
 
@@ -768,30 +795,33 @@ class MeshClient():
 
         #TODO: use Node obj created in onConnectionMesh. Possibly make it auto-updating when accessed
         # instead of updating here
-        self.myNodeInfo = self.iface.getMyNodeInfo()
+        
+        if self.iface.isConnected:
+            self.myNodeInfo = self.iface.getMyNodeInfo()
 
-        try:
-            self.iface.sendHeartbeat()
-        except Exception as e:
-            logging.error(f'Heartbeat failed')
-            self.discord_client.enqueue_lost_comm(e)
+            try:
+                self.iface.sendHeartbeat()
+            except Exception as e:
+                logging.error(f'Heartbeat failed')
+                self.discord_client.enqueue_lost_comm(e)
+                self.iface.close()
 
-        # do this stuff every time
-        try:
-            meshmessage = self._meshqueue.get_nowait()
-            self.process_queue_message(meshmessage)
-            self._meshqueue.task_done()
-        except queue.Empty:
-            pass
-        except Exception as e:
-            logging.exception('Exception processing meshqueue', exc_info=e)
+            # do this stuff every time
+            try:
+                meshmessage = self._meshqueue.get_nowait()
+                self.process_queue_message(meshmessage)
+                self._meshqueue.task_done()
+            except queue.Empty:
+                pass
+            except Exception as e:
+                logging.exception('Exception processing meshqueue', exc_info=e)
 
-        try:
-            adminmessage = self._adminqueue.get_nowait()
-            self.process_admin_queue_message(adminmessage)
-            self._adminqueue.task_done()
-        except queue.Empty:
-            pass
-        except Exception as e:
-            logging.exception('Exception processing adminqueue', exc_info=e)
+            try:
+                adminmessage = self._adminqueue.get_nowait()
+                self.process_admin_queue_message(adminmessage)
+                self._adminqueue.task_done()
+            except queue.Empty:
+                pass
+            except Exception as e:
+                logging.exception('Exception processing adminqueue', exc_info=e)
 
