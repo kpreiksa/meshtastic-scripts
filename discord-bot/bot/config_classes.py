@@ -8,7 +8,7 @@ class Config():
     class InterfaceInfo():
         def __init__(self, d):
             self._d = d
-            
+
         def __repr__(self):
             return f'<class {self.__class__.__name__} {self.connection_descriptor}>.'
 
@@ -20,8 +20,7 @@ class Config():
                 return f'{self.interface_type} Address:{self.interface_address} Port:{self.interface_port}'
             elif self.interface_type == 'ble':
                 return f'{self.interface_type} Node:{self.interface_ble_node}'
-            
-        
+
         @property
         def interface_type(self):
             return self._d.get('method', 'serial')
@@ -49,6 +48,43 @@ class Config():
             else:
                 logging.debug(f'interface_ble_node is invalid for interface_type: {self.interface_type}')
                 return None
+
+    class DatabaseInfo():
+        def __init__(self, d):
+            self._d = d
+
+        @property
+        def db_type(self):
+            return self._d.get('type', 'sqlite')
+
+        @property
+        def db_host(self):
+            return self._d.get('host')
+
+        @property
+        def db_port(self):
+            return self._d.get('port', '5432')
+
+        @property
+        def _db_username(self):
+            return self._d.get('username')
+
+        @property
+        def _db_password(self):
+            return self._d.get('password')
+
+        @property
+        def db_name(self):
+            return self._d.get('db_name', 'mydatabase')
+
+        @property
+        def _db_connection_string(self):
+            if self.db_type == 'sqlite':
+                return f'sqlite:///{self.db_name}'
+            elif self.db_type == 'postgres':
+                return f'postgresql+psycopg2://{self._db_username}:{self._db_password}@{self.db_host}:{self.db_port}/{self.db_name}'
+            else:
+                raise ValueError(f'Unsupported database type: {self.db_type}')
 
     def __init__(self):
         self._config = self.load_config()
@@ -97,6 +133,13 @@ class Config():
         INTERFACE_ADDRESS = os.environ.get('INTERFACE_ADDRESS')
         INTERACE_PORT = os.environ.get('INTERACE_PORT', '4403')
         INTERACE_BLE_NODE = os.environ.get('INTERACE_BLE_NODE')
+        # database info
+        DATABASE_TYPE = os.environ.get('DB_TYPE', 'sqlite')  # sqlite or postgresql
+        DB_HOST = os.environ.get('DB_HOST')
+        DB_PORT = os.environ.get('DB_PORT', '5432')  # Default is 5432
+        DB_USERNAME = os.environ.get('DB_USERNAME')
+        DB_PASSWORD = os.environ.get('DB_PASSWORD')
+        DB_NAME = os.environ.get('DB_NAME', 'mydatabase')  # Default is mydatabase
 
         required_vars = {
             'DISCORD_BOT_TOKEN': DISCORD_BOT_TOKEN,
@@ -124,6 +167,15 @@ class Config():
                 'address': INTERFACE_ADDRESS,
                 'port': INTERACE_PORT,
                 'ble_node': INTERACE_BLE_NODE
+            },
+            'database_info':
+            {
+                'type': DATABASE_TYPE,
+                'host': DB_HOST,
+                'port': DB_PORT,
+                'user': DB_USERNAME,
+                'password': DB_PASSWORD,
+                'db_name': DB_NAME
             }
         }
         if CHANNEL_1 is not None:
@@ -150,7 +202,7 @@ class Config():
     @property
     def discord_bot_token(self):
         return self._config.get('discord_bot_token')
-    
+
     @property
     def gmaps_api_key(self):
         return self._config.get('gmaps_api_key')
@@ -171,3 +223,6 @@ class Config():
     def interface_info(self):
         return Config.InterfaceInfo(self._config.get('interface_info', {}))
 
+    @property
+    def database_info(self):
+        return Config.DatabaseInfo(self._config.get('database_info', {}))

@@ -51,14 +51,17 @@ class HelpView(View):
         self.add_item(Button(label="Meshmap", style=ButtonStyle.link, url="https://meshmap.net"))
         self.add_item(Button(label="Python Meshtastic Docs", style=ButtonStyle.link, url="https://python.meshtastic.org/index.html"))
 
-DATABASE_URL = "postgresql+psycopg2://<myuser>:<mypassword>@<ipaddress>:5432/mydatabase"
+config = Config()
+db_info = config.database_info
 
-# engine = create_engine(f'sqlite:///{db_dir}/example.db')
+# Setup database connection
+DATABASE_URL = db_info._db_connection_string
 engine = create_engine(DATABASE_URL)
 db_base.Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
-config = Config()
+
+# Create the mesh client and discord client
 mesh_client = MeshClient(db_session=session, config=config) # create the mesh client but do not connect yet
 discord_client = DiscordBot(mesh_client, config, intents=discord.Intents.default())
 
