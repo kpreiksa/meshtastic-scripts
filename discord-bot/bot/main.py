@@ -35,7 +35,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler(os.path.join(log_dir, log_file)),
+        logging.FileHandler(os.path.join(log_dir, log_file), encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -51,11 +51,17 @@ class HelpView(View):
         self.add_item(Button(label="Meshmap", style=ButtonStyle.link, url="https://meshmap.net"))
         self.add_item(Button(label="Python Meshtastic Docs", style=ButtonStyle.link, url="https://python.meshtastic.org/index.html"))
 
-engine = create_engine(f'sqlite:///{db_dir}/example.db')
+config = Config()
+db_info = config.database_info
+
+# Setup database connection
+DATABASE_URL = db_info._db_connection_string
+engine = create_engine(DATABASE_URL)
 db_base.Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
-config = Config()
+
+# Create the mesh client and discord client
 mesh_client = MeshClient(db_session=session, config=config) # create the mesh client but do not connect yet
 discord_client = DiscordBot(mesh_client, config, intents=discord.Intents.default())
 

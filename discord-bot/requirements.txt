@@ -4,3 +4,4 @@ requests
 pytz
 pubsub
 sqlalchemy
+psycopg2

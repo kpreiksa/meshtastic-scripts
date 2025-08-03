@@ -13,5 +13,13 @@
     "address": "192.168.1.1",
     "port": "4403",
     "ble_node": "NODE_NAME_OR_BT"
+  },
+  "database_info": {
+    "type": "postgresql", // sqlite or postgresql, default is sqlite (local file). With sqlite, only db_name is used
+    "host": "192.168.1.1",
+    "port": "5432", // Default is 5432
+    "username": "user",
+    "password": "password",
+    "db_name": "mydatabase" // Default is mydatabase
   }
 }
