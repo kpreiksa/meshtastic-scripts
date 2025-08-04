@@ -187,7 +187,10 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
             # discord_client.enqueue_msg(chunk)
             await thread.send(chunk)
 
-
+    await thread.send(f"\nFinished listing active nodes for the last {active_time} minutes.")
+    await asyncio.sleep(0.1)
+    # close the thread
+    await thread.edit(archived=True)
 
     # await interaction.delete_original_response()
 
