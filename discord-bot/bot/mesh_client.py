@@ -66,7 +66,7 @@ class MeshClient():
                             lock_acquired = self._tx_ack_lock.acquire(timeout=10)
                             if not lock_acquired:
                                 logging.error(f'Failed to acquire lock')
-                            matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=db_packet.request_id).first()
+                            matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=db_packet.request_id).filter(TXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).first()
                             self._tx_ack_lock.release()
                         if matching_packet:
                             # if we find the packet in the db matching the request ID of the ACK... update it to say
@@ -117,7 +117,7 @@ class MeshClient():
             # use nodesByNum because it will include ones that we do not have userInfo for
             for node_num, node in self.iface.nodesByNum.items():
                 # see if node with num exists in db
-                matching_node = self._db_session.query(MeshNodeDB).filter_by(node_num=node_num).first()
+                matching_node = self._db_session.query(MeshNodeDB).filter_by(node_num=node_num).filter(MeshNodeDB.publisher_mesh_node_num == self.my_node_info.node_num_str).first()
                 if matching_node:
                     pass
                     #MeshNodeDB.update_from_nodedb(node_num, node, self)
@@ -184,7 +184,7 @@ class MeshClient():
             lock_acquired = self._tx_ack_lock.acquire(timeout=10)
             if not lock_acquired:
                 logging.error(f'Failed to acquire lock')
-            matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=db_packet.request_id).first()
+            matching_packet = self._db_session.query(TXPacket).filter_by(packet_id=db_packet.request_id).filter(TXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).first()
             self._tx_ack_lock.release()
         if matching_packet:
             # if we find the packet in the db matching the request ID of the ACK... update it to say
@@ -429,28 +429,28 @@ class MeshClient():
             # get all packets in the last x minutes, then get the node info
             active_after = datetime.datetime.now() - datetime.timedelta(minutes=int(time_limit))
             with self._db_lock:
-                node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.ts >= active_after).distinct().all()
+                node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.ts >= active_after).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).distinct().all()
             nodelist_start = f"**Nodes seen in the last {time_limit} minutes:**\n"
             node_nums = [x[0] for x in node_nums]
             # get nodes from the node db
             with self._db_lock:
-                nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.node_num.in_(node_nums)).all()
+                nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.node_num.in_(node_nums)).filter(MeshNodeDB.publisher_mesh_node_num == self.my_node_info.node_num_str).all()
         else:
             with self._db_lock:
-                node_nums = self._db_session.query(RXPacket.src_num).distinct().all()
+                node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).distinct().all()
             nodelist_start = f"**All Nodes in DB:**\n"
             with self._db_lock:
-                nodes = self._db_session.query(MeshNodeDB).all()
+                nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.publisher_mesh_node_num == self.my_node_info.node_num_str).all()
 
         nodelist = []
         for node in nodes:
             if node.node_num != self.my_node_info.node_num: # ignore ourselves
                 # add lastHeard via latest packet RX'd and its type
                 with self._db_lock:
-                    recent_packet_for_node = self._db_session.query(RXPacket).filter(RXPacket.src_num == node.node_num).order_by(RXPacket.ts.desc()).first()
+                    recent_packet_for_node = self._db_session.query(RXPacket).filter(RXPacket.src_num == node.node_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).order_by(RXPacket.ts.desc()).first()
                     hr_ago_24 = datetime.datetime.now() - datetime.timedelta(days=1)
-                    cnt_packets_24_hr = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.ts >= hr_ago_24).count()
-                    cnt_packets_from_node = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).count()
+                    cnt_packets_24_hr = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.ts >= hr_ago_24).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).count()
+                    cnt_packets_from_node = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).count()
                 last_packet_str = ''
                 if recent_packet_for_node:
                     last_packet_str = f'{recent_packet_for_node.portnum} at {util.time_str_from_dt(recent_packet_for_node.ts)}'

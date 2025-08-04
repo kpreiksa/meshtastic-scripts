@@ -190,7 +190,7 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
     n = mesh_client.get_node_num(node_id=node_id)
 
     # convert id to num to look up node
-    matching_nodes = mesh_client._db_session.query(db_classes.MeshNodeDB).filter(db_classes.MeshNodeDB.node_num == n).all()
+    matching_nodes = mesh_client._db_session.query(db_classes.MeshNodeDB).filter(db_classes.MeshNodeDB.node_num == n).filter(db_classes.MeshNodeDB.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).all()
     if len(matching_nodes) > 1:
         error_embed = discord.Embed(title=f"Error", description=f'More than 1 node matching ID: {node_id}', color=MeshBotColors.error())
         embeds.append(error_embed)
@@ -199,7 +199,7 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
         embeds.append(error_embed)
     else:
         matching_node = matching_nodes[0]
-        matching_packets = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).order_by(db_classes.RXPacket.ts.desc()).all()
+        matching_packets = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).order_by(db_classes.RXPacket.ts.desc()).all()
         portnums = list(set([x.portnum for x in matching_packets]))
 
         ni_embed = discord.Embed(title=f"Node Info", description=f'From DB for Node: {node_id}', color=MeshBotColors.violet())
@@ -230,7 +230,7 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
         ni_embed.set_footer(text=footer_text)
 
         # get most recent position packet
-        latest_position_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.portnum == 'POSITION_APP').order_by(db_classes.RXPacket.ts.desc()).first()
+        latest_position_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.portnum == 'POSITION_APP').filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).order_by(db_classes.RXPacket.ts.desc()).first()
         if latest_position_packet:
             lat = latest_position_packet.latitude
             lon = latest_position_packet.longitude
@@ -258,7 +258,7 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
 
 
         # get most recent position packet
-        latest_device_metrics_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.portnum == 'TELEMETRY_APP').filter(db_classes.RXPacket.has_device_metrics == True).order_by(db_classes.RXPacket.ts.desc()).first()
+        latest_device_metrics_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).filter(db_classes.RXPacket.portnum == 'TELEMETRY_APP').filter(db_classes.RXPacket.has_device_metrics == True).order_by(db_classes.RXPacket.ts.desc()).first()
         if latest_device_metrics_packet:
             device_metrics = latest_device_metrics_packet.telemetry_device_metrics
             # this will be JSON
@@ -277,7 +277,7 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
                 device_info_embed.set_footer(text=f'{time_str_from_dt(latest_device_metrics_packet.ts)}')
                 embeds.append((device_info_embed, latest_device_metrics_packet.ts))
 
-        latest_environment_metrics_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.portnum == 'TELEMETRY_APP').filter(db_classes.RXPacket.has_environment_metrics == True).order_by(db_classes.RXPacket.ts.desc()).first()
+        latest_environment_metrics_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).filter(db_classes.RXPacket.portnum == 'TELEMETRY_APP').filter(db_classes.RXPacket.has_environment_metrics == True).order_by(db_classes.RXPacket.ts.desc()).first()
         if latest_environment_metrics_packet:
             env_metrics = latest_environment_metrics_packet.telemetry_environment_metrics
             # this will be JSON
