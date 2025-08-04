@@ -17,13 +17,12 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy your application files into the container
-COPY main.py /app/main.py
-# COPY config.json /app/config.json
+COPY bot/ /app/bot/
+# Don't copy config.json
 COPY requirements.txt /app/requirements.txt
 
 # Install any dependencies (if applicable)
 RUN pip install -r requirements.txt
-
 
 # Define the command to run when the container starts
 # technically `bluetoothctl list` isn't necessary, but its nice for debugging purposes
