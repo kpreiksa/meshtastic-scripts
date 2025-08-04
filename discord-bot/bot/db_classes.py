@@ -516,9 +516,10 @@ class MeshNodeDB(Base):
 
 
     def update_from_nodeinfo(d, mesh_client):
+        bot_node_num = mesh_client.my_node_info.node_num_str
         nodenum = d.get('from')
         if nodenum is not None:
-            matching_node = mesh_client._db_session.query(MeshNodeDB).filter_by(node_num=nodenum).first()
+            matching_node = mesh_client._db_session.query(MeshNodeDB).filter_by(node_num=nodenum).filter(MeshNodeDB.publisher_mesh_node_num == bot_node_num).first()
             if matching_node:
                 decoded = d.get('decoded', {})
                 user_dict = decoded.get('user', {})
@@ -551,7 +552,8 @@ class MeshNodeDB(Base):
                 matching_node.upd_ts_nodeinfo = datetime.datetime.now()
 
     def update_from_nodedb(node_num, d, mesh_client):
-        matching_node = mesh_client._db_session.query(MeshNodeDB).filter_by(node_num=node_num).first()
+        bot_node_num = mesh_client.my_node_info.node_num_str
+        matching_node = mesh_client._db_session.query(MeshNodeDB).filter_by(node_num=node_num).filter(MeshNodeDB.publisher_mesh_node_num == bot_node_num).first()
         if matching_node:
             is_favorite = d.get('isFavorite')
             if is_favorite is not None:

@@ -79,6 +79,10 @@ class MeshNode():
         return self._node_dict.get('num')
     
     @property
+    def node_num_str(self):
+        return str(self._node_dict.get('num'))
+    
+    @property
     def last_heard(self):
         return self._node_dict.get('lastHeard')
     
