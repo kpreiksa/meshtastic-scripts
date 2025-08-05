@@ -27,4 +27,4 @@ RUN pip install -r requirements.txt
 # Define the command to run when the container starts
 # technically `bluetoothctl list` isn't necessary, but its nice for debugging purposes
 # In my testing, there was a race condition between the python script and the bluetooth adapter being available, hence the 5s. Seems no issue
-CMD ["bash", "-c", "bluetoothctl list && sleep 5 && python3 main.py"]
+CMD ["bash", "-c", "bluetoothctl list && sleep 5 && python3 ./bot/main.py"]

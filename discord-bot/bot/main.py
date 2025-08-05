@@ -484,7 +484,8 @@ def run_discord_bot():
         if discord_client:
             asyncio.run(discord_client.close())
         if mesh_client:
-            mesh_client.iface.close()
+            if mesh_client.iface:
+                mesh_client.iface.close()
 
 if __name__ == "__main__":
     run_discord_bot()
