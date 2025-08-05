@@ -2,6 +2,8 @@
 
 Originally based on [Kavitate's bot](https://github.com/Kavitate/Meshtastic-Discord-Bot).
 
+Source code for the bot is located in `./discord-bot/bot`. Additional files for docker, configuration, db scripts, and docker compose are in the `./discord-bot` directory.
+
 ## Features
 
 1. Send LoRa messages (to channels or DMs) from discord commands
@@ -13,7 +15,7 @@ Originally based on [Kavitate's bot](https://github.com/Kavitate/Meshtastic-Disc
 7. Map a specific node's last location
 8. Lookup a node's info in the database
 
-## Commands
+## Bot Commands
 
 1. /active: List all active nodes in last 61 minutes
 2. /all_nodes: List all nodes in the db
@@ -48,9 +50,19 @@ Originally based on [Kavitate's bot](https://github.com/Kavitate/Meshtastic-Disc
 
 ### Docker
 
-Out of date, don't use. Check back later, maybe
+This repo includes options to run the database, grafana dashboard, and bot in a docker-compose environment, as well as building the bot image and pushing it to a local registry. This is not required.
 
-## Config File
+#### Docker Files
+
+Dockerfile - File for creating the image
+docker-build-and-push.sh - Script to build and push the image to a local registry
+docker-config_example.env - Example config file, rename to docker-config.env and update with your registry info
+
+#### Docker Compose Files
+
+These files are for setting up the database, grafana, and the bot in a docker-compose environment. You must still use the other [Docker Files](#docker-files) to build the bot image and get it to your registry. Hosting a registry is not required, but it makes it easier to manage the bot image, however there are not instructions for that here.
+
+## Bot Config File
 
 Follow `config_example.json`, rename it `config.json`, remove any comments.
 
@@ -67,9 +79,11 @@ Follow `config_example.json`, rename it `config.json`, remove any comments.
     3. address and port are used for a tcp connection
     4. ble_node is used for a ble connection - such as `XXXX_83a0`
 
+Instead of using a config file, you can also set environment variables. The bot will look for these variables. These are documented in `config_example.env`.
+
 ## Database Info
 
-No docs
+No docs.
 
 If you start getting errors after an update, its probably because we broke the db schema; delete the db file and restart the bot to create a new one.
 
