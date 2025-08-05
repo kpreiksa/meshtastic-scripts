@@ -26,7 +26,32 @@ services:
       - "grafana-storage:${GF_VOLUME}"
     depends_on:
       - postgres
+  meshbot:
+    image: "${MY_DOCKER_REG}/${MY_DOCKER_NAME}:${MY_DOCKER_VERSION}"
+    container_name: meshtastic_discord_bot
+    privileged: true
+    environment:
+      - "DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}"
+      - "DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}"
+      - "TIME_ZONE=${TIME_ZONE}"
+      - "CHANNEL_0=${CHANNEL_0}"
+      - "CHANNEL_1=${CHANNEL_1}"
+      - "INTERFACE_METHOD=${INTERFACE_METHOD}"
+      - "INTERFACE_BLE_NODE=${INTERFACE_BLE_NODE}"
+      - "DB_TYPE=${DB_TYPE}"
+      - "DB_HOST=${DB_HOST}"
+      - "DB_PORT=${DB_PORT}"
+      - "DB_NAME=${DB_NAME}"
+      - "DB_USERNAME=${DB_USERNAME}"
+      - "DB_PASSWORD=${DB_PASSWORD}"
+    volumes:
+      - "meshbot-storage:/app/storage"
+      - "/var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket"
+    devices:
+      - "/dev/bus/usb"
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   grafana-storage:
+  meshbot-storage:

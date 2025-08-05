@@ -131,8 +131,8 @@ class Config():
         # interface info
         INTERFACE_METHOD = os.environ.get('INTERFACE_METHOD', 'serial')
         INTERFACE_ADDRESS = os.environ.get('INTERFACE_ADDRESS')
-        INTERACE_PORT = os.environ.get('INTERACE_PORT', '4403')
-        INTERACE_BLE_NODE = os.environ.get('INTERACE_BLE_NODE')
+        INTERFACE_PORT = os.environ.get('INTERFACE_PORT', '4403')
+        INTERFACE_BLE_NODE = os.environ.get('INTERFACE_BLE_NODE')
         # database info
         DATABASE_TYPE = os.environ.get('DB_TYPE', 'sqlite')  # sqlite or postgresql/postgres
         DB_HOST = os.environ.get('DB_HOST')
@@ -165,15 +165,15 @@ class Config():
             {
                 'method': INTERFACE_METHOD,
                 'address': INTERFACE_ADDRESS,
-                'port': INTERACE_PORT,
-                'ble_node': INTERACE_BLE_NODE
+                'port': INTERFACE_PORT,
+                'ble_node': INTERFACE_BLE_NODE
             },
             'database_info':
             {
                 'type': DATABASE_TYPE,
                 'host': DB_HOST,
                 'port': DB_PORT,
-                'user': DB_USERNAME,
+                'username': DB_USERNAME,
                 'password': DB_PASSWORD,
                 'db_name': DB_NAME
             }
