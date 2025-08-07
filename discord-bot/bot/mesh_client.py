@@ -427,7 +427,7 @@ class MeshClient():
 
         if time_limit is not None:
             # get all packets in the last x minutes, then get the node info
-            active_after = datetime.datetime.now() - datetime.timedelta(minutes=int(time_limit))
+            active_after = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=int(time_limit))
             with self._db_lock:
                 node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.ts >= active_after).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).distinct().all()
             nodelist_start = f"**Nodes seen in the last {time_limit} minutes:**\n"
@@ -448,7 +448,7 @@ class MeshClient():
                 # add lastHeard via latest packet RX'd and its type
                 with self._db_lock:
                     recent_packet_for_node = self._db_session.query(RXPacket).filter(RXPacket.src_num == node.node_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).order_by(RXPacket.ts.desc()).first()
-                    hr_ago_24 = datetime.datetime.now() - datetime.timedelta(days=1)
+                    hr_ago_24 = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
                     cnt_packets_24_hr = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.ts >= hr_ago_24).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).count()
                     cnt_packets_from_node = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).count()
                 last_packet_str = ''
