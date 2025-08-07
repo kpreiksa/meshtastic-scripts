@@ -41,6 +41,9 @@ sudo cp -a . /usr/share/mesh-client/
 # Navigate to the directory
 cd /usr/share/mesh-client/ || { echo "Failed to cd into /usr/share/mesh-client/"; exit 1; }
 
+# Make mesh-service-script.sh executable
+chmod +x mesh-service-script.sh
+
 # Create and activate Python virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
@@ -65,4 +68,5 @@ else
 fi
 
 echo "setup process complete!"
-echo -e "/nYou will likely need to add/modify your config file located in /usr/share/mesh-client/config to include your Discord token, meshtastic channels & keys, and the method your node will use to communicate with bot/n/nPress enter to continue"
+echo ""
+echo "You will likely need to add/modify your config file located in /usr/share/mesh-client/config to include your Discord token, meshtastic channels & keys, and the method your node will use to communicate with bot/n/nPress enter to continue"
