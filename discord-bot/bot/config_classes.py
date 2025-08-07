@@ -116,7 +116,7 @@ class Config():
         # variables:
         DISCORD_BOT_TOKEN = os.environ.get('DISCORD_BOT_TOKEN')
         DISCORD_CHANNEL_ID = os.environ.get('DISCORD_CHANNEL_ID')
-        TIME_ZONE = os.environ.get('TIME_ZONE')
+        TIME_ZONE = os.environ.get('TZ', os.environ.get('TIME_ZONE'))  # Default to America/Detroit if not set
         # Channels
         CHANNEL_0 = os.environ.get('CHANNEL_0', 'Primary') # required
         CHANNEL_1 = os.environ.get('CHANNEL_1')
@@ -213,7 +213,7 @@ class Config():
 
     @property
     def time_zone(self):
-        return self._config.get('time_zone')
+        return self._config.get('TZ', self._config.get('time_zone'))
 
     @property
     def channel_names(self):
