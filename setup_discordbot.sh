@@ -50,9 +50,19 @@ pip install -r requirements.txt
 
 # read -p "Paused. Press Enter to continue..."
 # Copy service file to systemd directory
+echo "copying mesh-discord.service to /lib/systemd/system"
 sudo cp mesh-discord.service /lib/systemd/system/
+echo "enabling mesh-discord.service"
 sudo systemctl enable mesh-discord.service
+echo "starting mesh-discord.service"
 sudo systemctl start mesh-discord.service
 
+SERVICE_NAME="mesh-discord.service"
+if systemctl is-active --quiet "$SERVICE_NAME"; then
+    echo "$SERVICE_NAME is running."
+else
+    echo "$SERVICE_NAME is NOT running :("
+fi
+
 echo "setup process complete!"
-read -p "/nYou will likely need to add/modify your config file located in /usr/share/mesh-client/config to include your Discord token, meshtastic channels & keys, and the method your node will use to communicate with bot/n/nPress enter to continue"
+echo -e "/nYou will likely need to add/modify your config file located in /usr/share/mesh-client/config to include your Discord token, meshtastic channels & keys, and the method your node will use to communicate with bot/n/nPress enter to continue"
