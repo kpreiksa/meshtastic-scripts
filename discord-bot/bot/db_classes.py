@@ -83,7 +83,7 @@ class RXPacket(Base):
     # traceroute
     traceroute_data = Column(JSON)
 
-    ts = Column(DateTime)
+    ts = Column(DateTime(timezone=True))
 
     @property
     def is_text_message(self):
@@ -326,7 +326,7 @@ class RXPacket(Base):
             request_id = request_id,
             error_reason = error_reason,
             traceroute_data = traceroute_data,
-            ts=datetime.datetime.now()
+            ts=datetime.datetime.now(datetime.timezone.utc)
 
         )
         return out
@@ -356,7 +356,7 @@ class TXPacket(Base):
     discord_user_global_name = Column(String)
     discord_user_name = Column(String)
     discord_user_mention = Column(String)
-    ts = Column(DateTime)
+    ts = Column(DateTime(timezone=True))
 
     acks = relationship("ACK", back_populates="tx_packet")
 
@@ -392,7 +392,7 @@ class TXPacket(Base):
             discord_user_global_name = discord_interaction_info.user_global_name,
             discord_user_name = discord_interaction_info.user_name,
             discord_user_mention = discord_interaction_info.user_mention,
-            ts=datetime.datetime.now()
+            ts=datetime.datetime.now(datetime.timezone.utc)
         )
         return db_pkt_obj
 
@@ -452,9 +452,9 @@ class MeshNodeDB(Base):
     user_hw_model_nodeinfo = Column(String)
     user_public_key_nodeinfo = Column(String)
 
-    crt_ts = Column(DateTime)
-    upd_ts_nodedb = Column(DateTime)
-    upd_ts_nodeinfo = Column(DateTime)
+    crt_ts = Column(DateTime(timezone=True))
+    upd_ts_nodedb = Column(DateTime(timezone=True))
+    upd_ts_nodeinfo = Column(DateTime(timezone=True))
 
     def __repr__(self):
         return f'<{self.__class__.__name__}. {self.descriptive_name_nodedb_nodedb}>'
@@ -549,7 +549,7 @@ class MeshNodeDB(Base):
                     if public_key is not None:
                         matching_node.user_public_key_nodeinfo = public_key
 
-                matching_node.upd_ts_nodeinfo = datetime.datetime.now()
+                matching_node.upd_ts_nodeinfo = datetime.datetime.now(datetime.timezone.utc)
 
     def update_from_nodedb(node_num, d, mesh_client):
         bot_node_num = mesh_client.my_node_info.node_num_str
@@ -586,7 +586,7 @@ class MeshNodeDB(Base):
             if user_public_key is not None:
                 matching_node.user_public_key_nodedb = user_public_key
 
-            matching_node.upd_ts_nodedb = datetime.datetime.now()
+            matching_node.upd_ts_nodedb = datetime.datetime.now(datetime.timezone.utc)
 
     def from_dict(d, mesh_client):
 
@@ -605,8 +605,8 @@ class MeshNodeDB(Base):
             user_mac_addr_nodedb = user_dict.get('macaddr'),
             user_hw_model_nodedb = user_dict.get('hwModel'),
             user_public_key_nodedb = user_dict.get('publicKey'),
-            crt_ts = datetime.datetime.now(),
-            upd_ts_nodedb = datetime.datetime.now(),
+            crt_ts = datetime.datetime.now(datetime.timezone.utc),
+            upd_ts_nodedb = datetime.datetime.now(datetime.timezone.utc),
             upd_ts_nodeinfo = None,
         )
 
