@@ -52,7 +52,7 @@ services:
       - "/var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket"
     devices:
       - "/dev/bus/usb"
-    restart: unless-stopped
+    restart: "no"
 
 volumes:
   postgres_data:
