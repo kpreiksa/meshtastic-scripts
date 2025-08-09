@@ -75,12 +75,25 @@ class Config():
 
         @property
         def db_name(self):
-            return self._d.get('db_name', 'mydatabase')
+            if self.db_type == 'sqlite':
+                return self._d.get('db_name', 'example.db')
+            else:
+                return self._d.get('db_name', 'mydatabase')
+
+        @property
+        def db_dir(self):
+            if self.db_type == 'sqlite':
+                return self._d.get('db_path', 'db')
+            else:
+                return None
 
         @property
         def _db_connection_string(self):
             if self.db_type == 'sqlite':
-                return f'sqlite:///{self.db_name}'
+                if self.db_dir:
+                    return f'sqlite:///{self.db_dir}/{self.db_name}'
+                else:
+                    return f'sqlite:///{self.db_name}'
             elif self.db_type == 'postgres' or self.db_type == 'postgresql':
                 return f'postgresql+psycopg2://{self._db_username}:{self._db_password}@{self.db_host}:{self.db_port}/{self.db_name}'
             else:
@@ -140,6 +153,7 @@ class Config():
         DB_USERNAME = os.environ.get('DB_USERNAME')
         DB_PASSWORD = os.environ.get('DB_PASSWORD')
         DB_NAME = os.environ.get('DB_NAME', 'mydatabase')  # Default is mydatabase
+        DB_DIR = os.environ.get('DB_DIR', 'db')
 
         required_vars = {
             'DISCORD_BOT_TOKEN': DISCORD_BOT_TOKEN,
@@ -175,7 +189,8 @@ class Config():
                 'port': DB_PORT,
                 'username': DB_USERNAME,
                 'password': DB_PASSWORD,
-                'db_name': DB_NAME
+                'db_name': DB_NAME,
+                'db_dir': DB_DIR
             }
         }
         if CHANNEL_1 is not None:
