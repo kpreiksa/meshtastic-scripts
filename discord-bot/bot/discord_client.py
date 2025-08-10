@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 
 import util
+from version import __version__
 
 class DiscordBot(discord.Client):
     def __init__(self, mesh_client, config, *args, **kwargs):
@@ -97,6 +98,7 @@ class DiscordBot(discord.Client):
         # TODO: Check if this is enabled in config
         embed = discord.Embed(title="Mesh Ready", description=f'Subscribed to mesh.', color=util.MeshBotColors.green())
         embed.add_field(name='Host Node', value=node_descriptor, inline=False)
+        embed.add_field(name='MeshBot Version', value=__version__, inline=False)
         embed.add_field(name='LoRa Preset', value=modem_preset)
         if batterylevel:
             embed.add_field(name='Battery Level', value=f'{batterylevel}%', inline=False)
