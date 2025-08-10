@@ -1,0 +1,36 @@
+name: Check version.py increment
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-version-increment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get base and head version.py
+        id: get_versions
+        run: |
+          git fetch origin main
+          BASE_VERSION=$(git show origin/main:discord-bot/bot/version.py | grep __version__ | cut -d'"' -f2)
+          HEAD_VERSION=$(cat discord-bot/bot/version.py | grep __version__ | cut -d'"' -f2)
+          echo "Base version: $BASE_VERSION"
+          echo "Head version: $HEAD_VERSION"
+          echo "base_version=$BASE_VERSION" >> $GITHUB_OUTPUT
+          echo "head_version=$HEAD_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check version increment
+        run: |
+          BASE_VERSION="${{ steps.get_versions.outputs.base_version }}"
+          HEAD_VERSION="${{ steps.get_versions.outputs.head_version }}"
+          if [ "$BASE_VERSION" = "$HEAD_VERSION" ]; then
+            echo "❌ version.py was not incremented. Base Version: $BASE_VERSION. New Version: $HEAD_VERSION"
+            exit 1
+          fi
+          echo "✅ version.py incremented: $BASE_VERSION -> $HEAD_VERSION"

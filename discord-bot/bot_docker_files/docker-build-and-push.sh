@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 # === Load configuration from file ===
 CONFIG_FILE="./docker-config.env"
 
@@ -13,7 +14,21 @@ set -a
 source "$CONFIG_FILE"
 set +a
 
-# === Derived Values ===
+# === Load version from version.py ===
+VERSION_FILE="../bot/version.py"
+if [ ! -f "$VERSION_FILE" ]; then
+    echo "❌ Version file not found: $VERSION_FILE"
+    exit 1
+fi
+
+MESHBOT_VERSION=$(grep '__version__' "$VERSION_FILE" | cut -d'"' -f2)
+if [ -z "$MESHBOT_VERSION" ]; then
+    echo "❌ Could not extract version from $VERSION_FILE"
+    exit 1
+fi
+
+# === Use MESHBOT_VERSION for Docker tag ===
+TAG="$MESHBOT_VERSION"
 FULL_IMAGE_NAME="${REGISTRY}/${IMAGE_NAME}:${TAG}"
 
 # === Build the image ===
