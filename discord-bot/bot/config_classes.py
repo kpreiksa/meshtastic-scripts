@@ -83,7 +83,7 @@ class Config():
         @property
         def db_dir(self):
             if self.db_type == 'sqlite':
-                return self._d.get('db_path', 'db')
+                return self._d.get('db_dir', 'db')
             else:
                 return None
 
