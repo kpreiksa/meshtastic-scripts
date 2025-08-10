@@ -615,6 +615,7 @@ class discord_bot_id(Base):
 
     id = Column(Integer, primary_key=True)
 
+    meshbot_version = Column(String)
     publisher_discord_bot_user_id = Column(String) # it is a big integer...
     publisher_discord_bot_name = Column(String)
     publisher_mesh_node_num = Column(String)
@@ -637,6 +638,7 @@ class discord_bot_id(Base):
     @staticmethod
     def from_dict(d):
         return discord_bot_id(
+            meshbot_version = d.get('meshbot_version'),
             publisher_discord_bot_user_id = d.get('publisher_discord_bot_user_id'),
             publisher_discord_bot_name = d.get('publisher_discord_bot_name'),
             publisher_mesh_node_num = d.get('publisher_mesh_node_num'),
