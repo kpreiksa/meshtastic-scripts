@@ -148,6 +148,9 @@ class DiscordBot(discord.Client):
             'content': <list of text messages or discord.embed's>,
             'first_msg': <str or discord.Embed>  # (optional) This is the first message to send in the thread
             'final_msg': <str or discord.Embed>  # (optional) This is the final message to send in the thread
+            'original_msg_field': <util.embed_field>  # (optional) This is the original message field to edit
+            'original_msg_id': <int>  # (optional) This is the original message ID to edit
+            'original_message_edit': <int>  # (optional) This is the original message edit index
         }
 
         """
@@ -156,6 +159,9 @@ class DiscordBot(discord.Client):
         content = msg.get('content', [])
         first_msg = msg.get('first_msg', None)
         final_msg = msg.get('final_msg', None)
+        original_msg_field = msg.get('original_msg_field', None)
+        original_msg_id = msg.get('original_msg_id', None)
+        original_message_edit = msg.get('original_message_edit', None)
 
         if first_msg:
             if isinstance(first_msg, discord.Embed):
@@ -179,6 +185,18 @@ class DiscordBot(discord.Client):
                 await thread.send(embed=final_msg)
             else:
                 await thread.send(final_msg)
+
+        # option to edit the original message, assumes its an embed and only lets you add/edit 1 field in the embed
+        if original_msg_field:
+            # edit the original message, get message
+            original_message = await self.channel.fetch_message(original_msg_id)
+            e = original_message.embeds[0]
+            # if edit is None, add new field, otherwise edit the field given
+            if original_message_edit is None:
+                e.add_field(**original_msg_field.return_field_items())
+            else:
+                e.set_field_at(int(original_message_edit), name="Processing Time", value=f'Took {toc:.2f} seconds', inline=False)
+            await original_message.edit(embed=e)
 
         # Then end thread
         await asyncio.sleep(0.1)  # Give Discord a moment to process the messages
