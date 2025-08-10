@@ -241,7 +241,9 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
 
         for portnum in portnums:
             portnum_packets = [x for x in matching_packets if x.portnum == portnum]
-            ni_embed.add_field(name=f"{portnum}", value=f'{len(portnum_packets)}', inline=False)
+            latest_packet_for_portnum = portnum_packets[0]
+            discord_ts = get_discord_ts_from_dt(latest_packet_for_portnum.ts)
+            ni_embed.add_field(name=f"{portnum}", value=f'Count: {len(portnum_packets)}\nLatest: {discord_ts}', inline=False)
 
         if matching_node.hw_model is not None:
             ni_embed.add_field(name=f"HW Model", value=matching_node.hw_model, inline=False)
