@@ -10,16 +10,17 @@
   },
   "interface_info": {
     "method": "serial", // serial, tcp, or ble
-    "address": "192.168.1.1",
-    "port": "4403",
-    "ble_node": "NODE_NAME_OR_BT"
+    "address": "192.168.1.1", // only used by tcp
+    "port": "4403", // only used by tcp
+    "ble_node": "NODE_NAME_OR_BT" // only used by ble
   },
   "database_info": {
-    "type": "postgres", // sqlite or postgres, default is sqlite (local file). With sqlite, only db_name is used
-    "host": "192.168.1.1",
-    "port": "5432", // Default is 5432
-    "username": "user",
-    "password": "password",
-    "db_name": "mydatabase" // Default is mydatabase
+    "type": "postgres", // sqlite or postgres/postgresql, default is sqlite (local file). With sqlite, only db_name is used
+    "host": "192.168.1.1", // only used for postgres
+    "port": "5432", // Default is 5432, only used for postgres
+    "username": "user", // only used for postgres
+    "password": "password", // only used for postgres
+    "db_name": "mydatabase", // sqlite default: example.db. postgres default: mydatabase
+    "db_dir": "db" // sqlite default: db. postgres default: None (not used)
   }
 }

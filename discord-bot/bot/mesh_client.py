@@ -18,7 +18,7 @@ from pubsub import pub
 
 from mesh_node_classes import MeshNode
 
-from db_classes import TXPacket, RXPacket, ACK, MeshNodeDB
+from db_classes import TXPacket, RXPacket, ACK, MeshNodeDB, discord_bot_id
 
 import util
 # move all of this to config
@@ -128,11 +128,30 @@ class MeshClient():
             try:
                 self._db_session.commit() # save back to db
             except Exception as e:
-                logging.error(f'DB ROLLBACK: {str(e)}')
+                logging.error(f'FAILURE MeshNodeDB COMMIT. DB ROLLBACK: {str(e)}')
                 self._db_session.rollback()
 
-        logging.info('***CONNECTED***')
-        logging.info('***************')
+            self.discord_bot_data = {
+                'publisher_discord_bot_user_id' : self.discord_client.user.id,
+                'publisher_discord_bot_name' : self.discord_client.user.display_name,
+                'publisher_mesh_node_num' : self.my_node_info.node_num,
+                'publisher_mesh_node_shortname' : self.my_node_info.user_info.short_name,
+                'publisher_mesh_node_longname' : self.my_node_info.user_info.long_name,
+                'publisher_channel_id' : self.discord_client.dis_channel_id
+            }
+            discord_bot = discord_bot_id.from_dict(self.discord_bot_data)
+            self._db_session.add(discord_bot)
+            try:
+                self._db_session.commit() # save back to db
+            except Exception as e:
+                logging.error(f'FAILURE discord_bot_id COMMIT. DB ROLLBACK: {str(e)}')
+                self._db_session.rollback()
+
+        logging.info('***********************')
+        logging.info('** MESHBOT CONNECTED **')
+        logging.info('***********************')
+        logging.info('****** NODE INFO ******')
+        logging.info('***********************')
         logging.info(f'Node Num:              {self.my_node_info.node_num}')
         logging.info(f'Node ID:               {self.my_node_info.user_info.user_id}')
         logging.info(f'Short Name:            {self.my_node_info.user_info.short_name}')
@@ -145,7 +164,13 @@ class MeshClient():
         logging.info(f'Node Info Periodicity: {interface.localNode.localConfig.device.node_info_broadcast_secs}')
         logging.info(f'Modem Preset:          {interface.localNode.localConfig.lora.modem_preset} - {self.config.channel_names[interface.localNode.localConfig.lora.modem_preset]}') # TODO make sure this isn't unique to serial_interface
         logging.info(f'TX Power:              {interface.localNode.localConfig.lora.tx_power}')
-        logging.info('***************')
+        logging.info('***********************')
+        logging.info('** DISCORD BOT INFO ***')
+        logging.info('***********************')
+        logging.info(f'Bot User ID:           {self.discord_client.user.id}')
+        logging.info(f'Bot Name:              {self.discord_client.user.display_name}')
+        logging.info(f'Bot Channel ID:        {self.discord_client.dis_channel_id}')
+        logging.info('***********************')
 
         node_descriptor = f'{self.my_node_info.user_info.user_id} | {self.my_node_info.user_info.short_name} | {self.my_node_info.user_info.long_name}'
         self.discord_client.enqueue_mesh_ready(node_descriptor, interface.localNode.localConfig.lora.modem_preset)
@@ -232,6 +257,8 @@ class MeshClient():
 
         self._tx_ack_lock = threading.Lock()
         self._db_lock = threading.Lock()
+
+        self.discord_bot_data = None
 
     def connect(self):
         """Connect to meshtastic device and subscribe to events for processing."""
