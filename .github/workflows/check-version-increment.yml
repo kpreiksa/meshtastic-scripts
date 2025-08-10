@@ -29,8 +29,10 @@ jobs:
         run: |
           BASE_VERSION="${{ steps.get_versions.outputs.base_version }}"
           HEAD_VERSION="${{ steps.get_versions.outputs.head_version }}"
+          echo "Base version: $BASE_VERSION" | tee -a $GITHUB_STEP_SUMMARY
+          echo "Head version: $HEAD_VERSION" | tee -a $GITHUB_STEP_SUMMARY
           if [ "$BASE_VERSION" = "$HEAD_VERSION" ]; then
-            echo "❌ version.py was not incremented. Base Version: $BASE_VERSION. New Version: $HEAD_VERSION"
+            echo "❌ version.py was not incremented." | tee -a $GITHUB_STEP_SUMMARY
             exit 1
           fi
-          echo "✅ version.py incremented: $BASE_VERSION -> $HEAD_VERSION"
+          echo "✅ version.py incremented: $BASE_VERSION -> $HEAD_VERSION" | tee -a $GITHUB_STEP_SUMMARY
