@@ -195,7 +195,7 @@ class DiscordBot(discord.Client):
             if original_message_edit is None:
                 e.add_field(**original_msg_field.return_field_items())
             else:
-                e.set_field_at(int(original_message_edit), name="Processing Time", value=f'Took {toc:.2f} seconds', inline=False)
+                e.set_field_at(int(original_message_edit), **original_msg_field.return_field_items())
             await original_message.edit(embed=e)
 
         # Then end thread
