@@ -1,4 +1,5 @@
 import asyncio
+from version import __version__
 import json
 import logging
 import os
@@ -360,6 +361,7 @@ async def describe_self(interaction: discord.Interaction):
     logging.info(f'/self received.')
 
     text = [
+        f'**MeshBot Version:** {__version__}',
         f'**Node ID:** {mesh_client.my_node_info.user_info.user_id}',
         f'**Short Name:** {mesh_client.my_node_info.user_info.short_name}',
         f'**Long Name:** {mesh_client.my_node_info.user_info.long_name}',
