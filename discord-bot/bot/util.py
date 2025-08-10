@@ -1,31 +1,32 @@
 import datetime
 import discord
+import time
 
 def uptime_str(sec):
     if sec is None:
         return 'Not Available'
-    
+
     days = sec // 86400
     sec_rem = sec - (days * 86400)
     hours = sec_rem // 3600
     sec_rem = sec_rem - (hours * 3600)
     min = sec_rem // 60
     sec_rem = sec_rem - (min * 60)
-    
+
     out = ''
-    
+
     if days > 0:
         out += f'{days} days, '
-        
+
     if hours > 0:
         out += f'{hours} hours, '
-        
+
     if min > 0:
         out += f'{min} minutes, '
-        
+
     out += f'{sec_rem} seconds.'
     return out
-        
+
 
 class DiscordInteractionInfo():
     """
@@ -40,7 +41,7 @@ class DiscordInteractionInfo():
         self._user_global_name = user_global_name
         self._user_name = user_name
         self._user_mention = user_mention
-        
+
     @property
     def guild_id(self):
         return self._guild_id
@@ -52,37 +53,40 @@ class DiscordInteractionInfo():
     @property
     def message_id(self):
         return self._message_id
-    
+
     @property
     def user_id(self):
         return self._user_id
-    
+
     @property
     def user_display_name(self):
         return self._user_display_name
-    
+
     @property
     def user_global_name(self):
         return self._user_global_name
-    
+
     @property
     def user_name(self):
         return self._user_name
-    
+
     @property
     def user_mention(self):
         return self._user_mention
-    
+
 
 def get_current_time_str():
     return datetime.datetime.now(datetime.timezone.utc).strftime('%d %B %Y %I:%M:%S %p')
+
+def get_current_time_discord_str():
+    return f'<t:{int(time.time())}:f>'
 
 def time_from_ts(ts):
     return datetime.datetime.fromtimestamp(ts).strftime('%d %B %Y %I:%M:%S %p')
 
 def time_str_from_dt(dt):
     return dt.strftime('%d %B %Y %I:%M:%S %p')
-    
+
 class MeshBotColors():
     _item_dict = {
         'green': 0x67ea94,

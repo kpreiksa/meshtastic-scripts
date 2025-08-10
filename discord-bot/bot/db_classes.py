@@ -645,5 +645,5 @@ class discord_bot_id(Base):
             publisher_mesh_node_shortname = d.get('publisher_mesh_node_shortname'),
             publisher_mesh_node_longname = d.get('publisher_mesh_node_longname'),
             publisher_channel_id = d.get('publisher_channel_id'),
-            ts = d.get('ts',datetime.datetime.now(datetime.timezone.utc))
+            ts = d.get('ts', datetime.datetime.now(datetime.timezone.utc))
         )
