@@ -455,15 +455,16 @@ class MeshClient():
         if time_limit is not None:
             # get all packets in the last x minutes, then get the node info
             active_after = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=int(time_limit))
+            logging.info(f'Getting node_nums based on active time')
             with self._db_lock:
-                node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.ts >= active_after).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).distinct().all()
+                node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).filter(RXPacket.ts >= active_after).distinct().all()
             node_nums = [x[0] for x in node_nums]
             # get nodes from the node db
+            logging.info(f'Getting active nodes from node db')
             with self._db_lock:
                 nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.node_num.in_(node_nums)).filter(MeshNodeDB.publisher_mesh_node_num == self.my_node_info.node_num_str).all()
         else:
-            with self._db_lock:
-                node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).distinct().all()
+            logging.info(f'Getting all nodes from node db')
             with self._db_lock:
                 nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.publisher_mesh_node_num == self.my_node_info.node_num_str).all()
 
@@ -471,21 +472,28 @@ class MeshClient():
         for node in nodes:
             if node.node_num != self.my_node_info.node_num: # ignore ourselves
                 # add lastHeard via latest packet RX'd and its type
+                #logging.info(f'Getting count and recent packets for node: {node.node_num}({node.user_id})')
                 with self._db_lock:
                     recent_packet_for_node = self._db_session.query(RXPacket).filter(RXPacket.src_num == node.node_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).order_by(RXPacket.ts.desc()).first()
                     hr_ago_24 = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
-                    cnt_packets_24_hr = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.ts >= hr_ago_24).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).count()
+                    cnt_packets_24_hr = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).filter(RXPacket.ts >= hr_ago_24).count()
                     cnt_packets_from_node = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).count()
                 last_packet_str = ''
                 if recent_packet_for_node:
                     last_packet_str = f'{recent_packet_for_node.portnum} at {util.time_str_from_dt(recent_packet_for_node.ts)}'
                     nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | Last Packet: {last_packet_str} | {cnt_packets_from_node} Total Packets ({cnt_packets_24_hr} in past day)", recent_packet_for_node.ts])
                 else:
-                    nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | No Packets in DB (Yet!)", datetime.datetime.fromtimestamp(0)])
+                    nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | No Packets in DB (Yet!)", datetime.datetime.fromtimestamp(0, datetime.timezone.utc)])
 
-        # sort nodelist and remove ts from it
-        nodelist_sorted = sorted(nodelist, key=lambda x: x[1], reverse=True)
-        nodelist_sorted = [x[0] for x in nodelist_sorted]
+        try:
+            # sort nodelist and remove ts from it
+            nodelist_sorted = sorted(nodelist, key=lambda x: x[1], reverse=True)
+            nodelist_sorted = [x[0] for x in nodelist_sorted]
+        except:
+            logging.error(f'Failed to sort list of nodes. Using unsorted list')
+            nodelist_sorted = [x[0] for x in nodelist]
+            nodelist_sorted.insert(0, 'WARNING: The following list is not sorted!')
+            
         nodelist_chunks = ["".join(nodelist_sorted[i:i + 10]) for i in range(0, len(nodelist_sorted), 10)]
         return nodelist_chunks
 
