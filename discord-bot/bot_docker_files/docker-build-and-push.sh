@@ -21,7 +21,7 @@ if [ ! -f "$VERSION_FILE" ]; then
     exit 1
 fi
 
-MESHBOT_VERSION=$(grep '__version__' "$VERSION_FILE" | cut -d'"' -f2)
+MESHBOT_VERSION=$(python -c "import sys; sys.path.insert(0, '../bot'); from version import __version__; print(__version__)" 2>/dev/null)
 if [ -z "$MESHBOT_VERSION" ]; then
     echo "❌ Could not extract version from $VERSION_FILE"
     exit 1
