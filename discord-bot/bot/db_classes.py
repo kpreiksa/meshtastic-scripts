@@ -634,6 +634,7 @@ class discord_bot_id(Base):
     def descriptive_full_name(self):
         return f'{self.descriptive_bot_name} | Channel: {self.publisher_channel_id} | MeshNode: {self.publisher_mesh_node_shortname}'
 
+    @staticmethod
     def from_dict(d):
         return discord_bot_id(
             publisher_discord_bot_user_id = d.get('publisher_discord_bot_user_id'),
