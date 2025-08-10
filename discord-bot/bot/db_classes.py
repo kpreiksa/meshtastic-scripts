@@ -610,3 +610,37 @@ class MeshNodeDB(Base):
             upd_ts_nodeinfo = None,
         )
 
+class discord_bot_id(Base):
+    __tablename__ = 'discord_bot_id'
+
+    id = Column(Integer, primary_key=True)
+
+    publisher_discord_bot_user_id = Column(String) # it is a big integer...
+    publisher_discord_bot_name = Column(String)
+    publisher_mesh_node_num = Column(String)
+    publisher_mesh_node_shortname = Column(String)
+    publisher_mesh_node_longname = Column(String)
+    publisher_channel_id = Column(BigInteger)
+    ts = Column(DateTime(timezone=True))
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__}. {self.__tablename__}>'
+
+    @property
+    def descriptive_bot_name(self):
+        return f'{self.publisher_discord_bot_name} (#{self.publisher_discord_bot_user_id})'
+
+    @property
+    def descriptive_full_name(self):
+        return f'{self.descriptive_bot_name} | Channel: {self.publisher_channel_id} | MeshNode: {self.publisher_mesh_node_shortname}'
+
+    def from_dict(d):
+        return discord_bot_id(
+            publisher_discord_bot_user_id = d.get('publisher_discord_bot_user_id'),
+            publisher_discord_bot_name = d.get('publisher_discord_bot_name'),
+            publisher_mesh_node_num = d.get('publisher_mesh_node_num'),
+            publisher_mesh_node_shortname = d.get('publisher_mesh_node_shortname'),
+            publisher_mesh_node_longname = d.get('publisher_mesh_node_longname'),
+            publisher_channel_id = d.get('publisher_channel_id'),
+            ts = d.get('ts',datetime.datetime.now(datetime.timezone.utc))
+        )
