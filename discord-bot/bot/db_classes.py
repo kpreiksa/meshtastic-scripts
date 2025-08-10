@@ -457,7 +457,7 @@ class MeshNodeDB(Base):
     upd_ts_nodeinfo = Column(DateTime(timezone=True))
 
     def __repr__(self):
-        return f'<{self.__class__.__name__}. {self.descriptive_name_nodedb_nodedb}>'
+        return f'<{self.__class__.__name__}. {self.descriptive_name_nodedb}>'
 
     @property
     def descriptive_name(self):
