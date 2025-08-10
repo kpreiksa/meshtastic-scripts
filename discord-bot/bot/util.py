@@ -84,8 +84,15 @@ def get_current_time_discord_str():
 def time_from_ts(ts):
     return datetime.datetime.fromtimestamp(ts).strftime('%d %B %Y %I:%M:%S %p')
 
+def get_discord_ts_from_ts(ts):
+    return f'<t:{int(ts)}:f>'
+
 def time_str_from_dt(dt):
     return dt.strftime('%d %B %Y %I:%M:%S %p')
+
+def get_discord_ts_from_dt(dt: datetime.datetime):
+
+    return get_discord_ts_from_ts(dt.timestamp())
 
 def convert_secs_to_pretty(sec):
     if sec is None:
