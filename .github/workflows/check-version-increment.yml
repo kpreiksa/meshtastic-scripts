@@ -30,8 +30,8 @@ jobs:
           BASE_VERSION="${{ steps.get_versions.outputs.base_version }}"
           HEAD_VERSION="${{ steps.get_versions.outputs.head_version }}"
 
-          echo "Base Version: !(base)[https://img.shields.io/badge/version-$BASE_VERSION-blue]" | tee -a $GITHUB_STEP_SUMMARY
-          echo "Head Version: !(head)[https://img.shields.io/badge/version-$HEAD_VERSION-blue]" | tee -a $GITHUB_STEP_SUMMARY
+          echo "Base Version: ![base](https://img.shields.io/badge/version-$BASE_VERSION-blue)" | tee -a $GITHUB_STEP_SUMMARY
+          echo "Head Version: ![head](https://img.shields.io/badge/version-$HEAD_VERSION-blue)" | tee -a $GITHUB_STEP_SUMMARY
           if [ "$BASE_VERSION" = "$HEAD_VERSION" ]; then
             echo "❌ version.py was not incremented." | tee -a $GITHUB_STEP_SUMMARY
             exit 1
