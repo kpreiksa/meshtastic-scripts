@@ -173,7 +173,7 @@ class MeshClient():
         logging.info('***********************')
 
         node_descriptor = f'{self.my_node_info.user_info.user_id} | {self.my_node_info.user_info.short_name} | {self.my_node_info.user_info.long_name}'
-        self.discord_client.enqueue_mesh_ready(node_descriptor, interface.localNode.localConfig.lora.modem_preset)
+        self.discord_client.enqueue_mesh_ready(node_descriptor, interface.localNode.localConfig.lora.modem_preset, self.my_node_info.device_metrics.battery_level)
 
         # only subscribe to the other events once connection is fully established
         logging.info('Subscribing to mesh events')

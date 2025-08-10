@@ -93,13 +93,14 @@ class DiscordBot(discord.Client):
         logging.info(f'Putting Mesh Received message on Discord queue')
         self.enqueue_msg(embed)
 
-    def enqueue_mesh_ready(self, node_descriptor, modem_preset):
+    def enqueue_mesh_ready(self, node_descriptor, modem_preset, batterylevel=None):
         # TODO: Check if this is enabled in config
         embed = discord.Embed(title="Mesh Ready", description=f'Subscribed to mesh.', color=util.MeshBotColors.green())
         embed.add_field(name='Host Node', value=node_descriptor, inline=False)
         embed.add_field(name='LoRa Preset', value=modem_preset)
-        current_time = util.get_current_time_str()
-        embed.set_footer(text=f"{current_time}")
+        if batterylevel:
+            embed.add_field(name='Battery Level', value=f'{batterylevel}%', inline=False)
+        embed.add_field(name='Metadata', value=util.get_current_time_discord_str(), inline=False)
         self.enqueue_msg(embed)
 
     def enqueue_battery_low_alert(self, text):
@@ -112,8 +113,7 @@ class DiscordBot(discord.Client):
 
     def enqueue_lost_comm(self, exception_obj):
         embed = discord.Embed(title="Lost Comm", description=f'Lost Comm: {str(exception_obj)}', color=util.MeshBotColors.error())
-        current_time = util.get_current_time_str()
-        embed.set_footer(text=f"{current_time}")
+        embed.add_field(name='Metadata', value=util.get_current_time_discord_str(), inline=False)
         self.enqueue_msg(embed, close_after = True)
 
 
