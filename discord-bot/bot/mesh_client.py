@@ -144,7 +144,7 @@ class MeshClient():
             try:
                 self._db_session.commit() # save back to db
             except Exception as e:
-                logging.error(f'FAILURE dicord_bot_id COMMIT. DB ROLLBACK: {str(e)}')
+                logging.error(f'FAILURE discord_bot_id COMMIT. DB ROLLBACK: {str(e)}')
                 self._db_session.rollback()
 
         logging.info('***********************')
