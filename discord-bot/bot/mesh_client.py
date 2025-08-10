@@ -457,7 +457,6 @@ class MeshClient():
             active_after = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=int(time_limit))
             with self._db_lock:
                 node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.ts >= active_after).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).distinct().all()
-            nodelist_start = f"**Nodes seen in the last {time_limit} minutes:**\n"
             node_nums = [x[0] for x in node_nums]
             # get nodes from the node db
             with self._db_lock:
@@ -465,7 +464,6 @@ class MeshClient():
         else:
             with self._db_lock:
                 node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).distinct().all()
-            nodelist_start = f"**All Nodes in DB:**\n"
             with self._db_lock:
                 nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.publisher_mesh_node_num == self.my_node_info.node_num_str).all()
 
@@ -485,16 +483,9 @@ class MeshClient():
                 else:
                     nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | No Packets in DB (Yet!)", datetime.datetime.fromtimestamp(0)])
 
-        if len(nodelist) == 0:
-            if time_limit is not None:
-                nodelist_start = f'**No Nodes seen in the last {time_limit} minutes**'
-            else:
-                nodelist_start = f'**No Nodes exist in DB**'
-
         # sort nodelist and remove ts from it
         nodelist_sorted = sorted(nodelist, key=lambda x: x[1], reverse=True)
         nodelist_sorted = [x[0] for x in nodelist_sorted]
-        nodelist_sorted.insert(0, nodelist_start)
         nodelist_chunks = ["".join(nodelist_sorted[i:i + 10]) for i in range(0, len(nodelist_sorted), 10)]
         return nodelist_chunks
 

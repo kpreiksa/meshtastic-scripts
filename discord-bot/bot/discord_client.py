@@ -13,6 +13,7 @@ class DiscordBot(discord.Client):
 
         self.config = config
         self._discordqueue = queue.Queue(maxsize=20)
+        self._discord_msg_thread_queue = queue.Queue(maxsize=20)
 
         self._meshresponsequeue = queue.Queue(maxsize=20)
 
@@ -41,6 +42,9 @@ class DiscordBot(discord.Client):
 
     def enqueue_msg(self, msg, close_after=False):
         self._discordqueue.put((msg, close_after))
+
+    def enqueue_msg_thread(self, msg):
+        self._discord_msg_thread_queue.put(msg)
 
     # def enqueue_msg_chain(self, msg, discord_interaction_id, close_after=False):
 
@@ -135,6 +139,50 @@ class DiscordBot(discord.Client):
 
     def _enqueue_mesh_response(self, msg):
         self._meshresponsequeue.put(msg)
+
+    async def process_discord_msg_thread(self, msg):
+        """Takes in a message thread packet
+        It should be a dictionary with this format:
+        dict = {
+            'thread_id': <discord message id>,
+            'content': <list of text messages or discord.embed's>,
+            'first_msg': <str or discord.Embed>  # (optional) This is the first message to send in the thread
+            'final_msg': <str or discord.Embed>  # (optional) This is the final message to send in the thread
+        }
+
+        """
+        thread_id = msg.get('thread_id')
+        thread = self.channel.get_thread(thread_id)
+        content = msg.get('content', [])
+        first_msg = msg.get('first_msg', None)
+        final_msg = msg.get('final_msg', None)
+
+        if first_msg:
+            if isinstance(first_msg, discord.Embed):
+                await thread.send(embed=first_msg)
+            else:
+                await thread.send(first_msg)
+
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, discord.Embed):
+                    await thread.send(embed=item)
+                else:
+                    await thread.send(item)
+        elif isinstance(content, discord.Embed):
+            await thread.send(embed=content)
+        elif isinstance(content, str):
+            await thread.send(content)
+
+        if final_msg:
+            if isinstance(final_msg, discord.Embed):
+                await thread.send(embed=final_msg)
+            else:
+                await thread.send(final_msg)
+
+        # Then end thread
+        await asyncio.sleep(0.1)  # Give Discord a moment to process the messages
+        await thread.edit(archived=True)
 
     async def process_mesh_response(self, msg):
         msg_type = msg.get('msg_type')
@@ -291,6 +339,15 @@ class DiscordBot(discord.Client):
                 pass
             except Exception as e:
                 logging.exception('Exception processing _meshresponsequeue', exc_info=e)
+
+            try:
+                thread_packet = self._discord_msg_thread_queue.get_nowait()
+                await self.process_discord_msg_thread(thread_packet)
+                self._discord_msg_thread_queue.task_done()
+            except queue.Empty:
+                pass
+            except Exception as e:
+                logging.exception('Exception processing _discord_msg_thread_queue', exc_info=e)
 
             # process stuff on mesh side
             self.mesh_client.background_process()

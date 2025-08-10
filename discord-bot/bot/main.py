@@ -17,7 +17,7 @@ from functools import wraps
 from config_classes import Config
 from mesh_client import MeshClient
 from discord_client import DiscordBot
-from util import get_current_time_str, uptime_str, time_from_ts, time_str_from_dt
+from util import get_current_time_str, uptime_str, time_from_ts, time_str_from_dt, get_current_time_discord_str
 from util import MeshBotColors, DiscordInteractionInfo
 
 # other params?
@@ -168,13 +168,11 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
 
     await asyncio.sleep(0.1)
 
-    # TODO Create first message that says pending
     embed = discord.Embed(title="Active Nodes", description=f"Listing all active nodes for the last {active_time} minutes.", color=MeshBotColors.green())
-    embed.set_footer(text=f"Requested by {interaction.user.display_name} ({interaction.user.id}) at {get_current_time_str()}")
+    embed.add_field(name='Request Info', value=f"Requested by {interaction.user.mention} at {get_current_time_discord_str()}")
 
     # Send first message
     out = await interaction.response.send_message(embed=embed)
-    discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
 
     # Get message to reference later
     msg_id = out.message_id
@@ -182,18 +180,27 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
 
     thread = await message.create_thread(name='/active cmd', auto_archive_duration=60)
     chunks = mesh_client.get_nodes_from_db(time_limit=active_time)
-    if discord_client:
-        for chunk in chunks:
-            # discord_client.enqueue_msg(chunk)
-            await thread.send(chunk)
+    thread_id = thread.id
 
-    await thread.send(f"\nFinished listing active nodes for the last {active_time} minutes.")
-    await asyncio.sleep(0.1)
-    # close the thread
-    await thread.edit(archived=True)
+    if len(chunks) == 0:
+        final_text = f'No nodes seen in the last {active_time} minutes.'
+    elif active_time:
+        final_text = f'Finished listing active nodes for the last {active_time} minutes.'
+    else:
+        final_text = None
 
-    # await interaction.delete_original_response()
+    final_msg = discord.Embed(
+        title='End Thread',
+        description=final_text,
+        color=MeshBotColors.white()
+    )
 
+    packet = {
+        'content': chunks,
+        'thread_id': thread_id,
+        'final_msg': final_msg
+    }
+    discord_client.enqueue_msg_thread(packet)
 
 @discord_client.tree.command(name="nodeinfo", description="Gets info for a node from the database")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
@@ -350,19 +357,43 @@ async def describe_self(interaction: discord.Interaction):
 @discord_client.tree.command(name="all_nodes", description="Lists all nodes.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def all_nodes(interaction: discord.Interaction):
-    await interaction.response.defer()
+    # await interaction.response.defer()
 
-    logging.info(f'/all_node received.')
+    logging.info(f'/all_nodes received.')
 
     await asyncio.sleep(0.1)
 
+    embed = discord.Embed(title="All Nodes", description=f"Listing all nodes in DB.", color=MeshBotColors.green())
+    embed.add_field(name='Request Info', value=f"Requested by {interaction.user.mention} at {get_current_time_discord_str()}")
+
+    # Send first message
+    out = await interaction.response.send_message(embed=embed)
+    # Get message to reference later
+    msg_id = out.message_id
+    message = await discord_client.channel.fetch_message(msg_id)
+
+    thread = await message.create_thread(name='/all_nodes cmd', auto_archive_duration=60)
     chunks = mesh_client.get_nodes_from_db()
-    if discord_client:
-        for chunk in chunks:
-            discord_client.enqueue_msg(chunk)
+    thread_id = thread.id
 
+    if len(chunks) == 0:
+        final_text = f'No nodes in DB.'
+    else:
+        final_text = f'Finished listing all nodes from DB.'
 
-    await interaction.delete_original_response()
+    final_msg = discord.Embed(
+        title='End Thread',
+        description=final_text,
+        color=MeshBotColors.white()
+    )
+
+    packet = {
+        'content': chunks,
+        'thread_id': thread_id,
+        'final_msg': final_msg
+    }
+    discord_client.enqueue_msg_thread(packet)
+
 
 @discord_client.tree.command(name="debug", description="Gives debug info to the user")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
