@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 import datetime
 
 import meshtastic
+from version import __version__
 
 class RXPacket(Base):
     __tablename__ = 'rx_packets'  # Name of the table in the database
@@ -638,7 +639,7 @@ class discord_bot_id(Base):
     @staticmethod
     def from_dict(d):
         return discord_bot_id(
-            meshbot_version = d.get('meshbot_version'),
+            meshbot_version = __version__,
             publisher_discord_bot_user_id = d.get('publisher_discord_bot_user_id'),
             publisher_discord_bot_name = d.get('publisher_discord_bot_name'),
             publisher_mesh_node_num = d.get('publisher_mesh_node_num'),
