@@ -3,15 +3,6 @@ import subprocess
 import sys
 import re
 
-def get_commit_sha(ref_name):
-    result = subprocess.run([
-        "git", "rev-parse", ref_name
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if result.returncode != 0:
-        print(f"Error getting commit SHA for {ref_name}: {result.stderr}")
-        sys.exit(1)
-    return result.stdout.strip()
-
 def get_changed_files(base_sha, head_sha, folder):
     result = subprocess.run([
         "git", "diff", "--name-only", f"{base_sha}..{head_sha}", "--", folder
@@ -36,13 +27,10 @@ def get_version_from_file(commit_sha, file_path):
 
 def main():
     # Get base and head refs from environment variables set by GitHub Actions
-    base_ref = os.environ.get("GITHUB_BASE_REF", "origin/main")
-    head_ref = os.environ.get("GITHUB_HEAD_REF", "HEAD")
+    base_sha = os.environ.get("GITHUB_EVENT_BEFORE", "origin/main")
+    head_sha = os.environ.get("GITHUB_SHA", "HEAD")
     folder = sys.argv[1] if len(sys.argv) > 1 else "discord-bot/bot/"
     version_file = os.path.join(folder, "version.py")
-
-    base_sha = get_commit_sha(base_ref)
-    head_sha = get_commit_sha(head_ref)
 
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     def print_and_summary(msg):
