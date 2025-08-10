@@ -162,18 +162,34 @@ for mesh_channel_index, mesh_channel_name in config.channel_names.items():
 @discord_client.tree.command(name="active", description="Lists all active nodes.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def active(interaction: discord.Interaction, active_time: str='61'):
-    await interaction.response.defer()
+    # await interaction.response.defer()
 
     logging.info(f'/active received, sending to queue with time: {active_time}')
 
     await asyncio.sleep(0.1)
 
+    # TODO Create first message that says pending
+    embed = discord.Embed(title="Active Nodes", description=f"Listing all active nodes for the last {active_time} minutes.", color=MeshBotColors.green())
+    embed.set_footer(text=f"Requested by {interaction.user.display_name} ({interaction.user.id}) at {get_current_time_str()}")
+
+    # Send first message
+    out = await interaction.response.send_message(embed=embed)
+    discord_interaction_info = DiscordInteractionInfo(interaction.guild_id, interaction.channel_id, out.message_id)
+
+    # Get message to reference later
+    msg_id = out.message_id
+    message = await discord_client.channel.fetch_message(msg_id)
+
+    thread = await message.create_thread(name='/active cmd', auto_archive_duration=60)
     chunks = mesh_client.get_nodes_from_db(time_limit=active_time)
     if discord_client:
         for chunk in chunks:
-            discord_client.enqueue_msg(chunk)
+            # discord_client.enqueue_msg(chunk)
+            await thread.send(chunk)
 
-    await interaction.delete_original_response()
+
+
+    # await interaction.delete_original_response()
 
 
 @discord_client.tree.command(name="nodeinfo", description="Gets info for a node from the database")

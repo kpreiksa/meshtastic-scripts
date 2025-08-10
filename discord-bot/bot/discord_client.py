@@ -42,6 +42,8 @@ class DiscordBot(discord.Client):
     def enqueue_msg(self, msg, close_after=False):
         self._discordqueue.put((msg, close_after))
 
+    # def enqueue_msg_chain(self, msg, discord_interaction_id, close_after=False):
+
     def enqueue_ack(self, ack_obj):
         self._enqueue_mesh_response({
             'msg_type': 'ACK',
