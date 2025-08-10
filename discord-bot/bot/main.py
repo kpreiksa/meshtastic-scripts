@@ -17,8 +17,9 @@ from functools import wraps
 from config_classes import Config
 from mesh_client import MeshClient
 from discord_client import DiscordBot
-from util import get_current_time_str, uptime_str, time_from_ts, time_str_from_dt, get_current_time_discord_str
-from util import MeshBotColors, DiscordInteractionInfo, get_discord_ts_from_dt
+from util import get_current_time_str, uptime_str, time_from_ts, time_str_from_dt, get_current_time_discord_str, convert_secs_to_pretty
+from util import MeshBotColors, DiscordInteractionInfo, embed_field, get_discord_ts_from_dt
+import time
 
 # other params?
 log_file = 'meshtastic-discord-bot.log'
@@ -174,6 +175,7 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
     # Send first message
     out = await interaction.response.send_message(embed=embed)
 
+    tic = time.time()
     # Get message to reference later
     msg_id = out.message_id
     message = await discord_client.channel.fetch_message(msg_id)
@@ -195,11 +197,20 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
         color=MeshBotColors.white()
     )
 
+    toc = time.time() - tic
+    original_msg_field = embed_field(name="Processing Time", value=f'Took {convert_secs_to_pretty(toc)}', inline=False)
+    original_msg_id = out.message_id
+    original_message_edit = None # None means add, 1 means replace first field
+
     packet = {
         'content': chunks,
         'thread_id': thread_id,
-        'final_msg': final_msg
+        'final_msg': final_msg,
+        'original_msg_field': original_msg_field,
+        'original_msg_id': original_msg_id,
+        'original_message_edit': original_message_edit
     }
+    logging.info(f'Got nodes, formatted data, sending to enqueue_msg_thread. Total of {len(chunks)} chunks (of up to 10).')
     discord_client.enqueue_msg_thread(packet)
 
 @discord_client.tree.command(name="nodeinfo", description="Gets info for a node from the database")
@@ -247,11 +258,11 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
 
         if matching_node.hw_model is not None:
             ni_embed.add_field(name=f"HW Model", value=matching_node.hw_model, inline=False)
-            
+
         if matching_node.upd_ts_nodedb is not None:
             discord_ts = get_discord_ts_from_dt(matching_node.upd_ts_nodedb)
             ni_embed.add_field(name=f"Node Info updated via Device NodeDB", value=discord_ts, inline=False)
-            
+
         if matching_node.upd_ts_nodeinfo is not None:
             discord_ts = get_discord_ts_from_dt(matching_node.upd_ts_nodeinfo)
             ni_embed.add_field(name=f"Node Info updated via NODEINFO_APP Packet", value=discord_ts, inline=False)
@@ -280,11 +291,11 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
             position_embed.add_field(name='Ground Speed', value=f'{ground_speed}', inline=False)
             position_embed.add_field(name='Sats in View', value=f'{sats_in_view}', inline=False)
             position_embed.add_field(name='Precision Bits', value=f'{precision_bits}', inline=False)
-            
+
             discord_ts = get_discord_ts_from_dt(latest_position_packet.ts)
             position_embed.add_field(name='Updated via POSITION_APP Packet', value=discord_ts, inline=False)
-            
-            
+
+
             embeds.append((position_embed, latest_position_packet.ts))
 
 
@@ -375,6 +386,8 @@ async def all_nodes(interaction: discord.Interaction):
 
     # Send first message
     out = await interaction.response.send_message(embed=embed)
+
+    tic = time.time()
     # Get message to reference later
     msg_id = out.message_id
     message = await discord_client.channel.fetch_message(msg_id)
@@ -394,11 +407,20 @@ async def all_nodes(interaction: discord.Interaction):
         color=MeshBotColors.white()
     )
 
+    toc = time.time() - tic
+    original_msg_field = embed_field(name="Processing Time", value=f'Took {convert_secs_to_pretty(toc)}', inline=False)
+    original_msg_id = out.message_id
+    original_message_edit = None # None means add, 1 means replace first field
+
     packet = {
         'content': chunks,
         'thread_id': thread_id,
-        'final_msg': final_msg
+        'final_msg': final_msg,
+        'original_msg_field': original_msg_field,
+        'original_msg_id': original_msg_id,
+        'original_message_edit': original_message_edit
     }
+    logging.info(f'Got nodes, formatted data, sending to enqueue_msg_thread. Total of {len(chunks)} chunks (of up to 10).')
     discord_client.enqueue_msg_thread(packet)
 
 
