@@ -14,26 +14,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get base and head version.py
-        id: get_versions
-        run: |
-          git fetch origin main
-          BASE_VERSION=$(git show origin/main:discord-bot/bot/version.py | grep __version__ | cut -d'"' -f2)
-          HEAD_VERSION=$(cat discord-bot/bot/version.py | grep __version__ | cut -d'"' -f2)
-          echo "Base version: $BASE_VERSION"
-          echo "Head version: $HEAD_VERSION"
-          echo "base_version=$BASE_VERSION" >> $GITHUB_OUTPUT
-          echo "head_version=$HEAD_VERSION" >> $GITHUB_OUTPUT
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
 
-      - name: Check version increment
-        run: |
-          BASE_VERSION="${{ steps.get_versions.outputs.base_version }}"
-          HEAD_VERSION="${{ steps.get_versions.outputs.head_version }}"
+      - name: Fetch all history for diff
+        run: git fetch origin main
 
-          echo "Base Version: ![base](https://img.shields.io/badge/version-$BASE_VERSION-blue)" | tee -a $GITHUB_STEP_SUMMARY
-          echo "Head Version: ![head](https://img.shields.io/badge/version-$HEAD_VERSION-blue)" | tee -a $GITHUB_STEP_SUMMARY
-          if [ "$BASE_VERSION" = "$HEAD_VERSION" ]; then
-            echo "❌ version.py was not incremented." | tee -a $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-          echo "✅ version.py incremented: $BASE_VERSION -> $HEAD_VERSION" | tee -a $GITHUB_STEP_SUMMARY
+      - name: Check version increment with Python script
+        run: |
+          python discord-bot/github_action_scripts/check_version_increment.py discord-bot/bot/
