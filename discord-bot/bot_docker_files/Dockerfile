@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     dbus \
     gcc \
     vim \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory inside the container
@@ -23,6 +24,13 @@ COPY requirements.txt /app/requirements.txt
 
 # Install any dependencies (if applicable)
 RUN pip install -r requirements.txt
+
+# Create required directories
+RUN mkdir -p /app/bot/logs /app/bot/db
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ps -ef | grep python | grep -v grep || exit 1
 
 # Define the command to run when the container starts
 # technically `bluetoothctl list` isn't necessary, but its nice for debugging purposes

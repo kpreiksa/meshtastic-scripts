@@ -56,15 +56,13 @@ class HelpView(View):
 config = Config()
 db_info = config.database_info
 
-# Setup database connection
-DATABASE_URL = db_info._db_connection_string
-engine = create_engine(DATABASE_URL)
-db_base.Base.metadata.create_all(engine)
-Session = sessionmaker(bind=engine)
-session = Session()
+# Setup database connection using DatabaseClient
+from db_client import DatabaseClient
+db_client = DatabaseClient(db_info._db_connection_string)
+session = db_client.get_session()
 
 # Create the mesh client and discord client
-mesh_client = MeshClient(db_session=session, config=config) # create the mesh client but do not connect yet
+mesh_client = MeshClient(db_session=session, db_client=db_client, config=config) # create the mesh client but do not connect yet
 discord_client = DiscordBot(mesh_client, config, intents=discord.Intents.default())
 
 # discord commands
@@ -83,7 +81,8 @@ async def help_command(interaction: discord.Interaction):
                 "`/help` - Shows this help message.\n"
                 "`/debug` - Shows information this bot's mesh node\n"
                 "`/ham` - Look up callsign for ham operator\n"
-                "`/map` - Shows map with marker for specific node\n")
+                "`/map` - Shows map with marker for specific node\n"
+                "`/reconnect` - Force reconnection to the mesh network\n")
 
     # Dynamically add channel commands based on mesh_channel_names
     for mesh_channel_index, channel_name in config.channel_names.items():
@@ -553,6 +552,45 @@ async def kms(interaction: discord.Interaction):
     logging.info(f'Killing myself as requested by {interaction.user.name} ({interaction.user.id})')
     await discord_client.close()
     mesh_client.iface.close()
+
+@discord_client.tree.command(name="reconnect", description="Force reconnection to the mesh network.")
+@discord_client.only_in_channel(discord_client.dis_channel_id)
+async def reconnect(interaction: discord.Interaction):
+    logging.info(f'/reconnect command received from {interaction.user.name} ({interaction.user.id})')
+    await interaction.response.defer(ephemeral=False)
+
+    embed = discord.Embed(
+        title="Reconnecting",
+        description="Attempting to reconnect to the mesh network...",
+        color=MeshBotColors.warning()
+    )
+    await interaction.followup.send(embed=embed)
+
+    # Attempt to reconnect using the connection manager
+    if hasattr(mesh_client, 'connection_manager'):
+        success = mesh_client.connection_manager.force_reconnect()
+
+        if success:
+            success_embed = discord.Embed(
+                title="Reconnection Successful",
+                description="Successfully reconnected to the mesh network!",
+                color=MeshBotColors.green()
+            )
+            await interaction.followup.send(embed=success_embed)
+        else:
+            failure_embed = discord.Embed(
+                title="Reconnection Failed",
+                description="Failed to reconnect to the mesh network. Check logs for details.",
+                color=MeshBotColors.error()
+            )
+            await interaction.followup.send(embed=failure_embed)
+    else:
+        error_embed = discord.Embed(
+            title="Error",
+            description="Connection manager is not initialized.",
+            color=MeshBotColors.error()
+        )
+        await interaction.followup.send(embed=error_embed)
 
 def run_discord_bot():
     try:

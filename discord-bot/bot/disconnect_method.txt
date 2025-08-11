@@ -1,0 +1,35 @@
+    def disconnect(self):
+        """Disconnect from the meshtastic device."""
+        if not self.iface:
+            logging.info("Already disconnected")
+            return True
+
+        try:
+            logging.info("Disconnecting from mesh network")
+
+            # Unsubscribe from events
+            try:
+                pub.unsubscribe(self.onConnectionMesh, "meshtastic.connection.established")
+                pub.unsubscribe(self.onDisconnect, "meshtastic.connection.lost")
+                pub.unsubscribe(self.onReceiveMesh, "meshtastic.receive.data")
+            except Exception as e:
+                logging.warning(f"Error unsubscribing from events: {e}")
+
+            # Stop connection monitoring
+            if hasattr(self, 'connection_manager'):
+                self.connection_manager.stop_monitoring()
+
+            # Close the interface
+            if self.iface:
+                try:
+                    self.iface.close()
+                except Exception as e:
+                    logging.warning(f"Error closing interface: {e}")
+                self.iface = None
+
+            self.connected = False
+            return True
+
+        except Exception as e:
+            logging.error(f"Error during disconnect: {e}")
+            return False

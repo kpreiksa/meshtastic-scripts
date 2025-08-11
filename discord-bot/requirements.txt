@@ -5,3 +5,7 @@ pytz
 pubsub
 sqlalchemy
 psycopg2-binary
+pytest
+pytest-asyncio
+freezegun
+mock

@@ -17,6 +17,7 @@ import pytz
 from pubsub import pub
 
 from mesh_node_classes import MeshNode
+from connection_manager import ConnectionManager
 
 from db_classes import TXPacket, RXPacket, ACK, MeshNodeDB, discord_bot_id
 from version import __version__
@@ -40,13 +41,20 @@ class MeshClient():
             db_packet = RXPacket.from_dict(packet, self)
 
             logging.info(f"START onReceiveMesh: {db_packet.portnum} packet (id: [{pkt_id}]) received from: {db_packet.src_descriptive}") # For debugging.
-            with self._db_lock:
-                self._db_session.add(db_packet)
-                try:
-                    self._db_session.commit() # save back to db
-                except Exception as e:
-                    logging.error(f'DB ROLLBACK: {str(e)}')
-                    self._db_session.rollback()
+
+            # Use db_client if available, otherwise fall back to direct session
+            if self._db_client:
+                success = self._db_client.add_rx_packet(db_packet)
+                if not success:
+                    logging.error(f'Failed to add RX packet to database')
+            else:
+                with self._db_lock:
+                    self._db_session.add(db_packet)
+                    try:
+                        self._db_session.commit() # save back to db
+                    except Exception as e:
+                        logging.error(f'DB ROLLBACK: {str(e)}')
+                        self._db_session.rollback()
 
             if db_packet.is_text_message:
                 self.discord_client.enqueue_mesh_text_msg_received(db_packet)
@@ -237,7 +245,7 @@ class MeshClient():
         else:
             logging.error(f'No matching packet found for request_id: {db_packet.request_i}.\n Maybe the packet isnt in the DB yet, and/or is this a self-ack?')
 
-    def __init__(self, db_session, config):
+    def __init__(self, db_session, config, db_client=None):
         self.config = config
 
         # queue for incoming requests (e.g. from discord bot commands) to send things over the mesh
@@ -246,8 +254,9 @@ class MeshClient():
         # queue to perform admin actions involving the node
         self._adminqueue = queue.Queue(maxsize=20)
 
-        # sqlalchemy database session
+        # sqlalchemy database session and client
         self._db_session = db_session
+        self._db_client = db_client  # New database client
 
         # reference to discord client - used for sending responses to user
         self.discord_client = None
@@ -258,6 +267,11 @@ class MeshClient():
         self.myNodeInfo = None #TODO: switch this to use the node object created onConnectionMesh
         self.my_node_info = None
 
+        # Connection management
+        self.connection_retries = 0
+        self.max_retries = 5  # Maximum number of connection retry attempts
+        self.reconnect_interval = 10  # Seconds between reconnection attempts
+
         self._tx_ack_lock = threading.Lock()
         self._db_lock = threading.Lock()
 
@@ -266,45 +280,134 @@ class MeshClient():
     def connect(self):
         """Connect to meshtastic device and subscribe to events for processing."""
 
-        interface_info = self.config.interface_info
+        # Initialize connection manager if not already initialized
+        if not hasattr(self, 'connection_manager'):
+            self.connection_manager = ConnectionManager(
+                mesh_client=self,
+                config=self.config,
+                max_retries=self.max_retries,
+                reconnect_interval=self.reconnect_interval
+            )
 
+        interface_info = self.config.interface_info
         logging.info(f'Connecting with interface: {interface_info.connection_descriptor}')
+
+        # Close any existing interface
+        if self.iface:
+            try:
+                self.iface.close()
+            except Exception as ex:
+                logging.warning(f"Error closing existing interface: {ex}")
+
+        self.connected = False
 
         # subscribe to the connection.established event first - since we do some setup in that,
         # it needs to be ready to be called when connection is first established
         logging.info('Subscribing to connection.established event')
         pub.subscribe(self.onConnectionMesh, "meshtastic.connection.established")
 
-        if interface_info.interface_type == 'serial':
-            try:
+        # Subscribe to disconnection event - need to add this handler
+        pub.subscribe(self.onDisconnect, "meshtastic.connection.lost")
+
+        success = False
+        try:
+            if interface_info.interface_type == 'serial':
                 self.iface = meshtastic.serial_interface.SerialInterface()
-            except Exception as ex:
-                logging.info(f"Error: Could not connect {ex}")
-                sys.exit(1)
-        elif interface_info.interface_type == 'tcp':
-            addr = interface_info.interface_address
-            if not addr:
-                logging.info(f'interface.address required for tcp connection')
-            try:
+                self.connected = True
+                success = True
+            elif interface_info.interface_type == 'tcp':
+                addr = interface_info.interface_address
+                if not addr:
+                    logging.error('Interface address required for TCP connection')
+                    return False
                 self.iface = meshtastic.tcp_interface.TCPInterface(addr)
-            except Exception as ex:
-                logging.info(f"Error: Could not connect {ex}")
-                sys.exit(1)
-        elif interface_info.interface_type == 'ble':
-            try:
+                self.connected = True
+                success = True
+            elif interface_info.interface_type == 'ble':
                 ble_node = interface_info.interface_ble_node
+                if not ble_node:
+                    logging.error('BLE node identifier required for BLE connection')
+                    return False
                 self.iface = meshtastic.ble_interface.BLEInterface(address=ble_node)
-            except Exception as ex:
-                logging.info(f'Error: Could not connect {ex}')
-                sys.exit(1)
-        else:
-            logging.info(f'Unsupported interface: {interface_info.interface_type}')
-            return
+                self.connected = True
+                success = True
+            else:
+                logging.error(f'Unsupported interface: {interface_info.interface_type}')
+                return False
+
+            # Start connection monitoring
+            self.connection_manager.start_monitoring()
+            return True
+
+        except Exception as ex:
+            logging.error(f"Error connecting to mesh network: {ex}")
+            self.connection_retries += 1
+            if self.connection_retries >= self.max_retries:
+                logging.error("Maximum connection retries reached.")
+                # Notify Discord that connection has failed
+                if self.discord_client:
+                    self.discord_client.enqueue_msg({
+                        "title": "Connection Failed",
+                        "description": f"Failed to connect to mesh network after {self.max_retries} attempts.",
+                        "color": 0xFF0000  # Red
+                    })
+            return False
 
 
+
+    def onDisconnect(self, interface):
+        """Called when the connection to the mesh device is lost."""
+        logging.warning("Connection to mesh device lost")
+        self.connected = False
+
+        # Notify Discord about connection loss
+        if self.discord_client:
+            self.discord_client.enqueue_msg({
+                "title": "Mesh Connection Lost",
+                "description": "Connection to the mesh device has been lost. Attempting to reconnect...",
+                "color": 0xFFA500  # Orange/warning color
+            })
+
+        # The connection_manager will handle reconnection attempts
 
     def link_discord(self, discord_client):
         self.discord_client = discord_client
+
+    def disconnect(self):
+        """Disconnect from the meshtastic device."""
+        if not self.iface:
+            logging.info("Already disconnected")
+            return True
+
+        try:
+            logging.info("Disconnecting from mesh network")
+
+            # Unsubscribe from events
+            try:
+                pub.unsubscribe(self.onConnectionMesh, "meshtastic.connection.established")
+                pub.unsubscribe(self.onDisconnect, "meshtastic.connection.lost")
+                pub.unsubscribe(self.onReceiveMesh, "meshtastic.receive.data")
+            except Exception as e:
+                logging.warning(f"Error unsubscribing from events: {e}")
+
+            # Stop connection monitoring
+            if hasattr(self, 'connection_manager'):
+                self.connection_manager.stop_monitoring()
+
+            # Close the interface
+            if self.iface:
+                try:
+                    self.iface.close()
+                except Exception as e:
+                    logging.warning(f"Error closing interface: {e}")
+                self.iface = None
+
+            self.connected = False
+            return True
+
+        except Exception as e:
+            logging.error(f"Error during disconnect: {e}")
+            return False
 
     # TODO: remove these and use node objs/db everywhere
 
