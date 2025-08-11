@@ -72,8 +72,8 @@ class ConnectionManager:
             # Always disconnect first
             try:
                 self.mesh_client.disconnect()
-            except:
-                pass  # Ignore errors during disconnect
+            except Exception as e:
+                logging.warning(f"Ignoring error during forced disconnect: {str(e)}")
 
             # Small delay to ensure clean disconnect
             time.sleep(2)
@@ -117,46 +117,18 @@ class ConnectionManager:
                     # Notify via Discord if possible
                     try:
                         if self.mesh_client.discord_client:
-                            error_embed = self.mesh_client.discord_client.create_error_embed(
-                                "Connection Error",
-                                f"Failed to reconnect to Meshtastic device after {self.max_retries} attempts. Manual intervention required."
-                            )
+                            # Use dictionary format that Discord client can handle
+                            error_embed = {
+                                "title": "Connection Error",
+                                "description": f"Failed to reconnect to Meshtastic device after {self.max_retries} attempts. Manual intervention required.",
+                                "color": 0xFF0000  # Red
+                            }
                             self.mesh_client.discord_client.enqueue_msg(error_embed)
                     except Exception as e:
                         logging.error(f"Failed to send Discord notification: {str(e)}")
 
             # Wait before checking again
             for _ in range(self.reconnect_interval * 2):  # Check for stop twice per interval
-                if self._stop_event.is_set():
-                    break
-                time.sleep(0.5)
-                    self.mesh_client.connect()
-                    if self.mesh_client.connected:
-                        logging.info("Reconnection successful")
-                        self.retry_count = 0  # Reset retry count on success
-                    else:
-                        self.retry_count += 1
-                        logging.warning(f"Reconnection failed. Retry {self.retry_count}/{self.max_retries}")
-                except Exception as e:
-                    self.retry_count += 1
-                    logging.error(f"Error during reconnection: {str(e)}. Retry {self.retry_count}/{self.max_retries}")
-
-                if self.retry_count >= self.max_retries:
-                    logging.error(f"Maximum reconnection attempts reached ({self.max_retries}). Stopping reconnection attempts.")
-
-                    # Notify Discord that connection has failed
-                    try:
-                        embed = {
-                            "title": "Mesh Connection Failed",
-                            "description": f"Failed to connect to mesh network after {self.max_retries} attempts. Please check your device connection and restart the bot.",
-                            "color": 0xFF0000  # Red color for error
-                        }
-                        self.mesh_client.discord_client.enqueue_msg(embed)
-                    except Exception as e:
-                        logging.error(f"Failed to send connection failure notification: {str(e)}")
-
-            # Wait before checking again
-            for _ in range(self.reconnect_interval * 2):  # Check more frequently than reconnect interval
                 if self._stop_event.is_set():
                     break
                 time.sleep(0.5)
