@@ -809,7 +809,8 @@ class MeshClient():
         if isinstance(msg, dict):
             msg_type = msg.get('msg_type')
             if msg_type == 'traceroute_node_id':
-                node_id = msg.get('node_id')
+                #args are node_id, hop limit, channel #
+                node_id = msg.get('node_id',5,0)
                 # discord_guild_id = msg.get('guild_id')
                 # discord_channel_id = msg.get('channel_id')
                 # discord_message_id = msg.get('discord_message_id')
