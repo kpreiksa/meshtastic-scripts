@@ -84,8 +84,57 @@ def get_current_time_discord_str():
 def time_from_ts(ts):
     return datetime.datetime.fromtimestamp(ts).strftime('%d %B %Y %I:%M:%S %p')
 
+def get_discord_ts_from_ts(ts):
+    return f'<t:{int(ts)}:f>'
+
 def time_str_from_dt(dt):
     return dt.strftime('%d %B %Y %I:%M:%S %p')
+
+def get_discord_ts_from_dt(dt: datetime.datetime):
+
+    return get_discord_ts_from_ts(dt.timestamp())
+
+def convert_secs_to_pretty(sec):
+    if sec is None:
+        return 'Not Available'
+
+    days = sec // 86400
+    sec_rem = sec - (days * 86400)
+    hours = sec_rem // 3600
+    sec_rem = sec_rem - (hours * 3600)
+    min = sec_rem // 60
+    sec_rem = sec_rem - (min * 60)
+
+    out = ''
+
+    if days > 0:
+        out += f'{days}d '
+
+    if hours > 0:
+        out += f'{hours}h '
+
+    if min > 0:
+        out += f'{min}m '
+
+    out += f'{sec_rem:.2f}s'
+    return out
+
+class embed_field():
+    def __init__(self, name, value, inline=False):
+        self.name = name
+        self.value = value
+        self.inline = inline
+
+    def __repr__(self):
+        return f'embed_field(name={self.name}, value={self.value}, inline={self.inline})'
+
+    def return_field_items(self):
+        field_dict = {
+            'name': self.name,
+            'value': self.value,
+            'inline': self.inline
+        }
+        return field_dict
 
 class MeshBotColors():
     _item_dict = {

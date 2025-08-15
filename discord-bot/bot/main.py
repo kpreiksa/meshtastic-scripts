@@ -1,4 +1,5 @@
 import asyncio
+from version import __version__
 import json
 import logging
 import os
@@ -17,8 +18,9 @@ from functools import wraps
 from config_classes import Config
 from mesh_client import MeshClient
 from discord_client import DiscordBot
-from util import get_current_time_str, uptime_str, time_from_ts, time_str_from_dt, get_current_time_discord_str
-from util import MeshBotColors, DiscordInteractionInfo
+from util import get_current_time_str, uptime_str, time_from_ts, time_str_from_dt, get_current_time_discord_str, convert_secs_to_pretty
+from util import MeshBotColors, DiscordInteractionInfo, embed_field, get_discord_ts_from_dt
+import time
 
 # other params?
 log_file = 'meshtastic-discord-bot.log'
@@ -174,6 +176,7 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
     # Send first message
     out = await interaction.response.send_message(embed=embed)
 
+    tic = time.time()
     # Get message to reference later
     msg_id = out.message_id
     message = await discord_client.channel.fetch_message(msg_id)
@@ -195,11 +198,20 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
         color=MeshBotColors.white()
     )
 
+    toc = time.time() - tic
+    original_msg_field = embed_field(name="Processing Time", value=f'Took {convert_secs_to_pretty(toc)}', inline=False)
+    original_msg_id = out.message_id
+    original_message_edit = None # None means add, 1 means replace first field
+
     packet = {
         'content': chunks,
         'thread_id': thread_id,
-        'final_msg': final_msg
+        'final_msg': final_msg,
+        'original_msg_field': original_msg_field,
+        'original_msg_id': original_msg_id,
+        'original_message_edit': original_message_edit
     }
+    logging.info(f'Got nodes, formatted data, sending to enqueue_msg_thread. Total of {len(chunks)} chunks (of up to 10).')
     discord_client.enqueue_msg_thread(packet)
 
 @discord_client.tree.command(name="nodeinfo", description="Gets info for a node from the database")
@@ -234,26 +246,27 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
         # get first packet
         first_matching_packet = matching_packets[0]
         first_packet_type = first_matching_packet.portnum
-        first_packet_ts_str = time_str_from_dt(first_matching_packet.ts)
-        ni_embed.add_field(name="Last Packet", value=f'{first_packet_type}\nReceived at: {first_packet_ts_str}', inline=False)
+        first_packet_discord_ts = get_discord_ts_from_dt(first_matching_packet.ts)
+        ni_embed.add_field(name="Last Packet", value=f'{first_packet_type}\nReceived at: {first_packet_discord_ts}', inline=False)
 
         ni_embed.add_field(name="Cnt Packets RX'd", value=f'{len(matching_packets)}', inline=False)
 
         for portnum in portnums:
             portnum_packets = [x for x in matching_packets if x.portnum == portnum]
-            ni_embed.add_field(name=f"{portnum}", value=f'{len(portnum_packets)}', inline=False)
+            latest_packet_for_portnum = portnum_packets[0]
+            discord_ts = get_discord_ts_from_dt(latest_packet_for_portnum.ts)
+            ni_embed.add_field(name=f"{portnum}", value=f'Count: {len(portnum_packets)}\nLatest: {discord_ts}', inline=False)
 
         if matching_node.hw_model is not None:
             ni_embed.add_field(name=f"HW Model", value=matching_node.hw_model, inline=False)
 
-        footer_rows = []
         if matching_node.upd_ts_nodedb is not None:
-            t_str = time_str_from_dt(matching_node.upd_ts_nodedb)
-            footer_rows.append(f'Last Update (Node DB): {t_str}')
+            discord_ts = get_discord_ts_from_dt(matching_node.upd_ts_nodedb)
+            ni_embed.add_field(name=f"Node Info updated via Device NodeDB", value=discord_ts, inline=False)
+
         if matching_node.upd_ts_nodeinfo is not None:
-            footer_rows.append(f'Last Update (Node Info): {t_str}')
-        footer_text = '\n'.join(footer_rows)
-        ni_embed.set_footer(text=footer_text)
+            discord_ts = get_discord_ts_from_dt(matching_node.upd_ts_nodeinfo)
+            ni_embed.add_field(name=f"Node Info updated via NODEINFO_APP Packet", value=discord_ts, inline=False)
 
         # get most recent position packet
         latest_position_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.portnum == 'POSITION_APP').filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).order_by(db_classes.RXPacket.ts.desc()).first()
@@ -279,7 +292,11 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
             position_embed.add_field(name='Ground Speed', value=f'{ground_speed}', inline=False)
             position_embed.add_field(name='Sats in View', value=f'{sats_in_view}', inline=False)
             position_embed.add_field(name='Precision Bits', value=f'{precision_bits}', inline=False)
-            position_embed.set_footer(text=f'{time_str_from_dt(latest_position_packet.ts)}')
+
+            discord_ts = get_discord_ts_from_dt(latest_position_packet.ts)
+            position_embed.add_field(name='Updated via POSITION_APP Packet', value=discord_ts, inline=False)
+
+
             embeds.append((position_embed, latest_position_packet.ts))
 
 
@@ -300,7 +317,8 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
                 device_info_embed.add_field(name='Channel Utilization', value=f'{round(chan_util, 2)}%', inline=False)
                 device_info_embed.add_field(name='TX Duty Cycle', value=f'{round(air_util, 2)}%', inline=False)
                 device_info_embed.add_field(name='Uptime', value=f'{uptime_str(uptime_sec)} ({uptime_sec}s)', inline=False)
-                device_info_embed.set_footer(text=f'{time_str_from_dt(latest_device_metrics_packet.ts)}')
+                discord_ts = get_discord_ts_from_dt(latest_device_metrics_packet.ts)
+                device_info_embed.add_field(name='Updated via TELEMETRY_APP Packet', value=discord_ts, inline=False)
                 embeds.append((device_info_embed, latest_device_metrics_packet.ts))
 
         latest_environment_metrics_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).filter(db_classes.RXPacket.portnum == 'TELEMETRY_APP').filter(db_classes.RXPacket.has_environment_metrics == True).order_by(db_classes.RXPacket.ts.desc()).first()
@@ -325,7 +343,8 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
                 env_info_embed.add_field(name='Relative Humidity', value=f'{round(rel_hum, 1)}%', inline=False)
                 env_info_embed.add_field(name='Dew Point', value=f'{round(dew_point, 1)}C ({round(dew_point_f, 1)}F)', inline=False)
                 env_info_embed.add_field(name='Barometric Pressure', value=f'{round(baro, 1)}hPa ({round(baro_inhg, 2)}inHg/{round(baro_psi,1)}psi)', inline=False)
-                env_info_embed.set_footer(text=f'{time_str_from_dt(latest_environment_metrics_packet.ts)}')
+                discord_ts = get_discord_ts_from_dt(latest_environment_metrics_packet.ts)
+                env_info_embed.add_field(name='Updated via TELEMETRY_APP Packet', value=discord_ts, inline=False)
                 embeds.append((env_info_embed, latest_environment_metrics_packet.ts))
 
         # sort the embeds by timestamp, but add nodeinfo first always
@@ -342,6 +361,7 @@ async def describe_self(interaction: discord.Interaction):
     logging.info(f'/self received.')
 
     text = [
+        f'**MeshBot Version:** {__version__}',
         f'**Node ID:** {mesh_client.my_node_info.user_info.user_id}',
         f'**Short Name:** {mesh_client.my_node_info.user_info.short_name}',
         f'**Long Name:** {mesh_client.my_node_info.user_info.long_name}',
@@ -368,6 +388,8 @@ async def all_nodes(interaction: discord.Interaction):
 
     # Send first message
     out = await interaction.response.send_message(embed=embed)
+
+    tic = time.time()
     # Get message to reference later
     msg_id = out.message_id
     message = await discord_client.channel.fetch_message(msg_id)
@@ -387,11 +409,20 @@ async def all_nodes(interaction: discord.Interaction):
         color=MeshBotColors.white()
     )
 
+    toc = time.time() - tic
+    original_msg_field = embed_field(name="Processing Time", value=f'Took {convert_secs_to_pretty(toc)}', inline=False)
+    original_msg_id = out.message_id
+    original_message_edit = None # None means add, 1 means replace first field
+
     packet = {
         'content': chunks,
         'thread_id': thread_id,
-        'final_msg': final_msg
+        'final_msg': final_msg,
+        'original_msg_field': original_msg_field,
+        'original_msg_id': original_msg_id,
+        'original_message_edit': original_message_edit
     }
+    logging.info(f'Got nodes, formatted data, sending to enqueue_msg_thread. Total of {len(chunks)} chunks (of up to 10).')
     discord_client.enqueue_msg_thread(packet)
 
 

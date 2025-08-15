@@ -1,0 +1,27 @@
+name: Check version.py increment
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-version-increment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Fetch all history for diff
+        run: git fetch origin main
+
+      - name: Check version increment with Python script
+        run: |
+          python discord-bot/github_action_scripts/check_version_increment.py discord-bot/bot/

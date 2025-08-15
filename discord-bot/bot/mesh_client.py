@@ -19,6 +19,7 @@ from pubsub import pub
 from mesh_node_classes import MeshNode
 
 from db_classes import TXPacket, RXPacket, ACK, MeshNodeDB, discord_bot_id
+from version import __version__
 
 import util
 # move all of this to config
@@ -149,6 +150,8 @@ class MeshClient():
 
         logging.info('***********************')
         logging.info('** MESHBOT CONNECTED **')
+        logging.info('***********************')
+        logging.info(f'MeshBot Version:       {__version__}')
         logging.info('***********************')
         logging.info('****** NODE INFO ******')
         logging.info('***********************')
@@ -493,7 +496,7 @@ class MeshClient():
             logging.error(f'Failed to sort list of nodes. Using unsorted list')
             nodelist_sorted = [x[0] for x in nodelist]
             nodelist_sorted.insert(0, 'WARNING: The following list is not sorted!')
-            
+
         nodelist_chunks = ["".join(nodelist_sorted[i:i + 10]) for i in range(0, len(nodelist_sorted), 10)]
         return nodelist_chunks
 
