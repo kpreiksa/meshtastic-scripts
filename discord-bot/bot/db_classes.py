@@ -518,39 +518,73 @@ class MeshNodeDB(Base):
 
     def update_from_nodeinfo(d, mesh_client):
         bot_node_num = mesh_client.my_node_info.node_num_str
+        
+        publisher_mesh_node_num = mesh_client.my_node_info.node_num,
+        publisher_discord_bot_user_id = mesh_client.discord_client.user.id,
+            
         nodenum = d.get('from')
         if nodenum is not None:
+            
+            decoded = d.get('decoded', {})
+            user_dict = decoded.get('user', {})
+            if user_dict:
+                user_id = user_dict.get('id')
+                long_name = user_dict.get('longName')
+                short_name = user_dict.get('shortName')
+                mac_addr = user_dict.get('macaddr')
+                hw_model = user_dict.get('hwModel')
+                public_key = user_dict.get('publicKey')
+                    
+                    
             matching_node = mesh_client._db_session.query(MeshNodeDB).filter_by(node_num=nodenum).filter(MeshNodeDB.publisher_mesh_node_num == bot_node_num).first()
             if matching_node:
-                decoded = d.get('decoded', {})
-                user_dict = decoded.get('user', {})
                 if user_dict:
-
-                    user_id = user_dict.get('id')
                     if user_id is not None:
                         matching_node.user_id_nodeinfo = user_id
 
-                    long_name = user_dict.get('longName')
                     if long_name is not None:
                         matching_node.user_long_name_nodeinfo = long_name
 
-                    short_name = user_dict.get('shortName')
                     if short_name is not None:
                         matching_node.user_short_name_nodedb = short_name
 
-                    mac_addr = user_dict.get('macaddr')
                     if mac_addr is not None:
                         matching_node.user_mac_addr_nodeinfo = mac_addr
 
-                    hw_model = user_dict.get('hwModel')
                     if hw_model is not None:
                         matching_node.user_hw_model_nodeinfo = hw_model
 
-                    public_key = user_dict.get('publicKey')
                     if public_key is not None:
                         matching_node.user_public_key_nodeinfo = public_key
 
                 matching_node.upd_ts_nodeinfo = datetime.datetime.now(datetime.timezone.utc)
+            else:
+                # if the node is not in the database, create a new one
+                new_node = MeshNodeDB(
+                    publisher_mesh_node_num = mesh_client.my_node_info.node_num,
+                    publisher_discord_bot_user_id = mesh_client.discord_client.user.id,
+                    node_num = nodenum,
+                    is_favorite = None,
+                    # no user info means we don't know the name yet
+                    user_id_nodedb = None,
+                    user_long_name_nodedb =  None,
+                    user_short_name_nodedb =  None,
+                    user_mac_addr_nodedb =  None,
+                    user_hw_model_nodedb =  None,
+                    user_public_key_nodedb =  None,
+                    user_id_nodeinfo = user_id,
+                    user_long_name_nodeinfo = long_name,
+                    user_short_name_nodeinfo = short_name,
+                    user_mac_addr_nodeinfo = mac_addr,
+                    user_hw_model_nodeinfo = hw_model,
+                    user_public_key_nodeinfo = public_key,
+                    crt_ts = datetime.datetime.now(datetime.timezone.utc),
+                    upd_ts_nodedb = None,
+                    upd_ts_nodeinfo = datetime.datetime.now(datetime.timezone.utc)
+                    
+                )
+                mesh_client._db_session.add(new_node)
+                mesh_client._db_session.commit()
 
     def update_from_nodedb(node_num, d, mesh_client):
         bot_node_num = mesh_client.my_node_info.node_num_str
