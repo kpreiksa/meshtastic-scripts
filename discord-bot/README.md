@@ -52,17 +52,19 @@ Source code for the bot is located in `./discord-bot/bot`. Additional files for 
 
 This repo includes options to run the database, grafana dashboard, and bot in a docker-compose environment, as well as building the bot image and pushing it to a local registry. This is not required.
 
-#### Docker Files
+It also includes a separate docker image that watches the github repo for changes and automatically rebuilds and pushes the docker image to the local registry. This is to avoid using dockerhub and github self-hosted runners on a public repo.
+
+#### Docker Files - `./bot_docker_files`
 
 Dockerfile - File for creating the image
-docker-build-and-push.sh - Script to build and push the image to a local registry
+build-and-push.sh - Script to build and push the image to a local registry
 docker-config_example.env - Example config file, rename to docker-config.env and update with your registry info
 
-#### Docker Compose Files
+#### Docker Compose Files - `./docker_compose_files`
 
 These files are for setting up the database, grafana, and the bot in a docker-compose environment. You must still use the other [Docker Files](#docker-files) to build the bot image and get it to your registry. Hosting a registry is not required, but it makes it easier to manage the bot image, however there are not instructions for that here.
 
-## Bot Config File
+## Bot Config File `./config`
 
 Follow `config_example.json`, rename it `config.json`, remove any comments.
 
@@ -97,3 +99,7 @@ We've tested/developed this mainly using serial connections. We know BLE and TCP
 2. All messages to discord should be enqueued to the discord_client class defined in discord_client.py (except replies in commands, defined in main.py)
 3. All LoRa messages shall be enqueued to the mesh_client classes defined in mesh_client.py
 4. An end goal is have everything stored in a DB so we can have 1 database with multiple bots feeding it data
+
+## GitHub Actions - `./github_action_scripts`
+
+There is 1 GitHub action that checks to make sure the version has been changed (doesn't explicitly check for increasing version number). Only runs this check if something in /discord-bot/bot is modified.

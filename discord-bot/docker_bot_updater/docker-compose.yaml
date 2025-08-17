@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  meshtastic-docker-bot-updater:
+    image: "${MY_DOCKER_REG}/meshtastic-docker-bot-updater:latest"
+    container_name: meshtastic-docker-bot-updater
+    environment:
+      - "MY_DOCKER_REG=${MY_DOCKER_REG}:5000"
+      - "FORCE_REBUILD=True"
+      - "DOCKER_HOST=unix:///var/run/docker.sock"
+    volumes:
+      # Mount Docker socket to allow building and pushing images
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
