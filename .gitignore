@@ -182,6 +182,8 @@ nodes_dump.json
 
 
 *.db
+*.db-journal
+*.sqlite
 discord-bot/config/config.json
 discord-bot/config/config_main.json
 discord-bot/docker_compose_files/meshbot.env
