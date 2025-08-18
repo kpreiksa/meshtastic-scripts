@@ -8,7 +8,7 @@ import subprocess
 
 # Config
 git_url = 'https://github.com/kpreiksa/meshtastic-scripts.git'
-TIME_DELAY = 5
+TIME_DELAY = 30
 # Env Vars
 DOCKER_REG = os.getenv("MY_DOCKER_REG")
 DOCKER_IMAGE = 'meshtastic-discord-bot'
