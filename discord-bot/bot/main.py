@@ -554,11 +554,32 @@ async def kms(interaction: discord.Interaction):
     await discord_client.close()
     mesh_client.iface.close()
 
+async def print_hello():
+    print('hello')
+    await asyncio.sleep(10)
+    print('world')
+
 def run_discord_bot():
     try:
         # TODO could do ble connection BEFORE doing .run
+
+        # INIT/setup functions (non-mesh)
+        # asyncio.run(discord_client.run(config.discord_bot_token))
+        asyncio.run(mesh_client.connect())
+
+        print('test')
+        # init db client (future)
+        # init mesh client - probably nothing? Connect to mesh should be the start of the BG task
+
+        # Create task group
+        # Add mesh bg and discord bg to this task
+
         # could also add logic into __init__
-        discord_client.run(config.discord_bot_token)
+        # TODO separate bg task from normal .run in discord_client
+        # TODO figure out if we want to do the normal .run inside discord_client.__init__
+
+        # TODO move mesh.connect to here
+        # TODO (future) start bg tasks for db client and connect manager here
     except Exception as e:
         logging.error(f"An error occurred while running the bot: {e}")
     finally:

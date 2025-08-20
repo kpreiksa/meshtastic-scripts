@@ -5,6 +5,7 @@ import sys
 import time
 import re
 import threading
+import asyncio
 from difflib import SequenceMatcher
 
 import datetime
@@ -103,7 +104,7 @@ class MeshClient():
         finally:
             logging.info(f"END onReceiveMesh: {db_packet.portnum} packet (id: [{pkt_id}]) received from: {db_packet.src_descriptive}") # For debugging.
 
-    def onConnectionMesh(self, interface, topic=None):
+    def onConnectionMesh(self, interface):
         # called the first time we connect to the node. Initialize the db from the device's node db
 
         logging.info('onConnectionMesh: Connection Established')
@@ -113,40 +114,41 @@ class MeshClient():
 
         self.nodes = self.iface.nodes # this should take precedence
 
-        with self._db_lock:
+        # TODO move this to separate async function that waits for mesh connection and discord connection
+        # with self._db_lock:
 
-            # use nodesByNum because it will include ones that we do not have userInfo for
-            for node_num, node in self.iface.nodesByNum.items():
-                # see if node with num exists in db
-                matching_node = self._db_session.query(MeshNodeDB).filter_by(node_num=node_num).filter(MeshNodeDB.publisher_mesh_node_num == self.my_node_info.node_num_str).first()
-                if matching_node:
-                    pass
-                    #MeshNodeDB.update_from_nodedb(node_num, node, self)
-                else:
-                    new_node = MeshNodeDB.from_dict(node, self)
-                    self._db_session.add(new_node)
-            # should only need to commit once
-            try:
-                self._db_session.commit() # save back to db
-            except Exception as e:
-                logging.error(f'FAILURE MeshNodeDB COMMIT. DB ROLLBACK: {str(e)}')
-                self._db_session.rollback()
+        #     # use nodesByNum because it will include ones that we do not have userInfo for
+        #     for node_num, node in self.iface.nodesByNum.items():
+        #         # see if node with num exists in db
+        #         matching_node = self._db_session.query(MeshNodeDB).filter_by(node_num=node_num).filter(MeshNodeDB.publisher_mesh_node_num == self.my_node_info.node_num_str).first()
+        #         if matching_node:
+        #             pass
+        #             #MeshNodeDB.update_from_nodedb(node_num, node, self)
+        #         else:
+        #             new_node = MeshNodeDB.from_dict(node, self)
+        #             self._db_session.add(new_node)
+        #     # should only need to commit once
+        #     try:
+        #         self._db_session.commit() # save back to db
+        #     except Exception as e:
+        #         logging.error(f'FAILURE MeshNodeDB COMMIT. DB ROLLBACK: {str(e)}')
+        #         self._db_session.rollback()
 
-            self.discord_bot_data = {
-                'publisher_discord_bot_user_id' : self.discord_client.user.id,
-                'publisher_discord_bot_name' : self.discord_client.user.display_name,
-                'publisher_mesh_node_num' : self.my_node_info.node_num,
-                'publisher_mesh_node_shortname' : self.my_node_info.user_info.short_name,
-                'publisher_mesh_node_longname' : self.my_node_info.user_info.long_name,
-                'publisher_channel_id' : self.discord_client.dis_channel_id
-            }
-            discord_bot = discord_bot_id.from_dict(self.discord_bot_data)
-            self._db_session.add(discord_bot)
-            try:
-                self._db_session.commit() # save back to db
-            except Exception as e:
-                logging.error(f'FAILURE discord_bot_id COMMIT. DB ROLLBACK: {str(e)}')
-                self._db_session.rollback()
+        #     self.discord_bot_data = {
+        #         'publisher_discord_bot_user_id' : self.discord_client.user.id,
+        #         'publisher_discord_bot_name' : self.discord_client.user.display_name,
+        #         'publisher_mesh_node_num' : self.my_node_info.node_num,
+        #         'publisher_mesh_node_shortname' : self.my_node_info.user_info.short_name,
+        #         'publisher_mesh_node_longname' : self.my_node_info.user_info.long_name,
+        #         'publisher_channel_id' : self.discord_client.dis_channel_id
+        #     }
+        #     discord_bot = discord_bot_id.from_dict(self.discord_bot_data)
+        #     self._db_session.add(discord_bot)
+        #     try:
+        #         self._db_session.commit() # save back to db
+        #     except Exception as e:
+        #         logging.error(f'FAILURE discord_bot_id COMMIT. DB ROLLBACK: {str(e)}')
+        #         self._db_session.rollback()
 
         logging.info('***********************')
         logging.info('** MESHBOT CONNECTED **')
@@ -168,21 +170,16 @@ class MeshClient():
         logging.info(f'Modem Preset:          {interface.localNode.localConfig.lora.modem_preset} - {self.config.channel_names[interface.localNode.localConfig.lora.modem_preset]}') # TODO make sure this isn't unique to serial_interface
         logging.info(f'TX Power:              {interface.localNode.localConfig.lora.tx_power}')
         logging.info('***********************')
-        logging.info('** DISCORD BOT INFO ***')
-        logging.info('***********************')
-        logging.info(f'Bot User ID:           {self.discord_client.user.id}')
-        logging.info(f'Bot Name:              {self.discord_client.user.display_name}')
-        logging.info(f'Bot Channel ID:        {self.discord_client.dis_channel_id}')
-        logging.info('***********************')
 
         node_descriptor = f'{self.my_node_info.user_info.user_id} | {self.my_node_info.user_info.short_name} | {self.my_node_info.user_info.long_name}'
         self.discord_client.enqueue_mesh_ready(node_descriptor, interface.localNode.localConfig.lora.modem_preset, self.my_node_info.device_metrics.battery_level)
 
         # only subscribe to the other events once connection is fully established
+        # TODO don't subscribe until discord is connected?
         logging.info('Subscribing to mesh events')
-        pub.subscribe(self.onReceiveMesh, "meshtastic.receive")
-        pub.subscribe(self.onNodeUpdated, "meshtastic.node.updated")
-        pub.subscribe(self.onDisconnect, 'meshtastic.connection.lost')
+        # pub.subscribe(self.onReceiveMesh, "meshtastic.receive")
+        # pub.subscribe(self.onNodeUpdated, "meshtastic.node.updated")
+        # pub.subscribe(self.onDisconnect, 'meshtastic.connection.lost')
 
     def onDisconnect(self, interface):
         # this happens when a node gets updated... we should update the database
@@ -263,7 +260,7 @@ class MeshClient():
 
         self.discord_bot_data = None
 
-    def connect(self):
+    async def connect(self):
         """Connect to meshtastic device and subscribe to events for processing."""
 
         interface_info = self.config.interface_info
@@ -301,7 +298,20 @@ class MeshClient():
             logging.info(f'Unsupported interface: {interface_info.interface_type}')
             return
 
+        # Start task group
+        # TODO make this a separate func?
+        print('test')
+        from main import print_hello
+        async with asyncio.TaskGroup() as tg:
+            task1 = tg.create_task(self.discord_run())
+            task2 = tg.create_task(self.background_process())
+            task3 = tg.create_task(print_hello())
 
+        print('test2')
+
+    async def discord_run(self):
+        print('starting discord')
+        await self.discord_client.start (self.config.discord_bot_token)
 
     def link_discord(self, discord_client):
         self.discord_client = discord_client
@@ -818,7 +828,7 @@ class MeshClient():
             else:
                 pass
 
-    def background_process(self):
+    async def background_process(self):
 
         #TODO: Update nodes. Not sure if we can do it every time.
         #TODO: Update local nodeDB (SQL)
@@ -826,8 +836,8 @@ class MeshClient():
 
         #TODO: use Node obj created in onConnectionMesh. Possibly make it auto-updating when accessed
         # instead of updating here
-
-        if self.iface.isConnected:
+        print(f'starting mesh background process') # TODO remove
+        while self.iface.isConnected:
             self.myNodeInfo = self.iface.getMyNodeInfo()
 
             try:
@@ -855,4 +865,5 @@ class MeshClient():
                 pass
             except Exception as e:
                 logging.exception('Exception processing adminqueue', exc_info=e)
-
+        logging.warning(f'iface.isconnected is FALSE, killing background task for mesh_client')
+        # TODO Should we kill all background tasks here? Attempt to reconnect?

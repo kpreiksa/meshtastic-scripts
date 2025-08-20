@@ -15,7 +15,6 @@ class DiscordBot(discord.Client):
         self.config = config
         self._discordqueue = queue.Queue(maxsize=20)
         self._discord_msg_thread_queue = queue.Queue(maxsize=20)
-
         self._meshresponsequeue = queue.Queue(maxsize=20)
 
         self.mesh_client = mesh_client
@@ -27,15 +26,16 @@ class DiscordBot(discord.Client):
         self.channel = None
         self.dis_channel_id = int(self.config.discord_channel_id)
 
-
-    # async def setup_hook(self) -> None:  # Create the background task and run it in the background.
-    #     self.bg_task = self.loop.create_task(self.background_task())
-    #     await self.tree.sync()
-
     async def on_ready(self):
-        logging.info(f'Logged in as {self.user} (ID: {self.user.id})')
+        logging.info('***********************')
+        logging.info('** DISCORD BOT INFO ***')
+        logging.info('***********************')
+        logging.info(f'Bot User ID:           {self.user.id}')
+        logging.info(f'Bot Name:              {self.user.display_name}')
+        logging.info(f'Bot Channel ID:        {self.dis_channel_id}')
+        logging.info('***********************')
+        self.channel = self.get_channel(self.dis_channel_id)
         self.bg_task = self.loop.create_task(self.background_task())
-        self.mesh_client.connect() # once discord is ready... conncet to mesh
         await self.tree.sync()
 
     def check_channel_id(self, other_channel_id):
@@ -321,10 +321,9 @@ class DiscordBot(discord.Client):
             await message.edit(embed=e)
 
     async def background_task(self):
-        await self.wait_until_ready()
-        counter = 0
-        self.channel = self.get_channel(self.dis_channel_id)
+        await self.wait_until_ready() # TODO just in case? Remove?
 
+        # TODO Eventually change the 'check is active' logic
         while not self.is_closed():
             # handle messages coming from mesh to discord
             try:
@@ -370,7 +369,8 @@ class DiscordBot(discord.Client):
                 logging.exception('Exception processing _discord_msg_thread_queue', exc_info=e)
 
             # process stuff on mesh side
-            self.mesh_client.background_process()
+            # TODO separate this into separate bg task
+            # self.mesh_client.background_process()
 
             await asyncio.sleep(0.5)
         logging.info('Discord client background task finished.')
