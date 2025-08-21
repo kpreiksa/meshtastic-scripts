@@ -18,7 +18,7 @@ from functools import wraps
 from config_classes import Config
 from mesh_client import MeshClient
 from discord_client import DiscordBot
-from util import get_current_time_str, uptime_str, time_from_ts, time_str_from_dt, get_current_time_discord_str, convert_secs_to_pretty
+from util import get_current_time_str, uptime_str, get_current_time_discord_str, convert_secs_to_pretty, get_discord_ts_from_ts
 from util import MeshBotColors, DiscordInteractionInfo, embed_field, get_discord_ts_from_dt
 import time
 
@@ -170,7 +170,7 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
 
     await asyncio.sleep(0.1)
 
-    embed = discord.Embed(title="Active Nodes", description=f"Listing all active nodes for the last {active_time} minutes.", color=MeshBotColors.green())
+    embed = discord.Embed(title="Active Nodes", description=f"Listing all active nodes for the last {active_time} minutes.", color=MeshBotColors.peach())
     embed.add_field(name='Request Info', value=f"Requested by {interaction.user.mention} at {get_current_time_discord_str()}")
 
     # Send first message
@@ -179,39 +179,50 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
     tic = time.time()
     # Get message to reference later
     msg_id = out.message_id
-    message = await discord_client.channel.fetch_message(msg_id)
 
-    thread = await message.create_thread(name='/active cmd', auto_archive_duration=60)
-    chunks = mesh_client.get_nodes_from_db(time_limit=active_time)
-    thread_id = thread.id
+    chunks, num_results = mesh_client.get_nodes_from_db(time_limit=active_time)
 
-    if len(chunks) == 0:
-        final_text = f'No nodes seen in the last {active_time} minutes.'
-    elif active_time:
+    if len(chunks) > 0 and active_time:
         final_text = f'Finished listing active nodes for the last {active_time} minutes.'
+        no_thread = False
+    elif len(chunks) == 0:
+        # No thread, edit original message
+        final_text = None
+        no_thread = True
     else:
         final_text = None
 
-    final_msg = discord.Embed(
-        title='End Thread',
-        description=final_text,
-        color=MeshBotColors.white()
-    )
+    if final_text is not None:
+        final_msg = discord.Embed(
+            title='End Thread',
+            description=final_text,
+            color=MeshBotColors.white()
+        )
+    else:
+        final_msg = None
 
     toc = time.time() - tic
-    original_msg_field = embed_field(name="Processing Time", value=f'Took {convert_secs_to_pretty(toc)}', inline=False)
-    original_msg_id = out.message_id
-    original_message_edit = None # None means add, 1 means replace first field
+    if no_thread:
+        thread_name = None
+        original_msg_field = embed_field(name="Warning", value=f'No active nodes found in the last {active_time} minutes.', inline=False)
+        original_message_edit = None # None means add, 1 means replace first field
+        original_message_edit_color = MeshBotColors.error()
+    else:
+        thread_name = '/active cmd'
+        original_msg_field = embed_field(name="Results", value=f'{num_results} Found  (Took {convert_secs_to_pretty(toc)})', inline=False)
+        original_message_edit = None # None means add, 1 means replace first field
+        original_message_edit_color = MeshBotColors.green()
 
     packet = {
         'content': chunks,
-        'thread_id': thread_id,
+        'thread_name': thread_name,
         'final_msg': final_msg,
         'original_msg_field': original_msg_field,
-        'original_msg_id': original_msg_id,
-        'original_message_edit': original_message_edit
+        'original_msg_id': msg_id, # calculated above
+        'original_message_edit': original_message_edit,
+        'original_message_edit_color': original_message_edit_color
     }
-    logging.info(f'Got nodes, formatted data, sending to enqueue_msg_thread. Total of {len(chunks)} chunks (of up to 10).')
+    logging.info(f'Got nodes, formatted data, sending to enqueue_msg_thread. Total of {len(chunks)} chunks (of up to 10 items per chunk).')
     discord_client.enqueue_msg_thread(packet)
 
 @discord_client.tree.command(name="nodeinfo", description="Gets info for a node from the database")
@@ -383,7 +394,7 @@ async def all_nodes(interaction: discord.Interaction):
 
     await asyncio.sleep(0.1)
 
-    embed = discord.Embed(title="All Nodes", description=f"Listing all nodes in DB.", color=MeshBotColors.green())
+    embed = discord.Embed(title="All Nodes", description=f"Listing all nodes in DB.", color=MeshBotColors.peach())
     embed.add_field(name='Request Info', value=f"Requested by {interaction.user.mention} at {get_current_time_discord_str()}")
 
     # Send first message
@@ -392,37 +403,48 @@ async def all_nodes(interaction: discord.Interaction):
     tic = time.time()
     # Get message to reference later
     msg_id = out.message_id
-    message = await discord_client.channel.fetch_message(msg_id)
 
-    thread = await message.create_thread(name='/all_nodes cmd', auto_archive_duration=60)
-    chunks = mesh_client.get_nodes_from_db()
-    thread_id = thread.id
+    chunks, num_results = mesh_client.get_nodes_from_db()
 
     if len(chunks) == 0:
-        final_text = f'No nodes in DB.'
+        # No thread, edit original message
+        final_text = None
+        no_thread = True
     else:
         final_text = f'Finished listing all nodes from DB.'
+        no_thread = False
 
-    final_msg = discord.Embed(
-        title='End Thread',
-        description=final_text,
-        color=MeshBotColors.white()
-    )
+    if final_text is not None:
+        final_msg = discord.Embed(
+            title='End Thread',
+            description=final_text,
+            color=MeshBotColors.white()
+        )
+    else:
+        final_msg = None
 
     toc = time.time() - tic
-    original_msg_field = embed_field(name="Processing Time", value=f'Took {convert_secs_to_pretty(toc)}', inline=False)
-    original_msg_id = out.message_id
-    original_message_edit = None # None means add, 1 means replace first field
+    if no_thread:
+        thread_name = None
+        original_msg_field = embed_field(name="Warning", value=f'No nodes found in DB.', inline=False)
+        original_message_edit = None
+        original_message_edit_color = MeshBotColors.error()
+    else:
+        thread_name = '/all_nodes cmd'
+        original_msg_field = embed_field(name="Results", value=f'{num_results} Found  (Took {convert_secs_to_pretty(toc)})', inline=False)
+        original_message_edit = None
+        original_message_edit_color = MeshBotColors.green()
 
     packet = {
         'content': chunks,
-        'thread_id': thread_id,
+        'thread_name': thread_name,
         'final_msg': final_msg,
         'original_msg_field': original_msg_field,
-        'original_msg_id': original_msg_id,
-        'original_message_edit': original_message_edit
+        'original_msg_id': msg_id,
+        'original_message_edit': original_message_edit,
+        'original_message_edit_color': original_message_edit_color
     }
-    logging.info(f'Got nodes, formatted data, sending to enqueue_msg_thread. Total of {len(chunks)} chunks (of up to 10).')
+    logging.info(f'Got nodes, formatted data, sending to enqueue_msg_thread. Total of {len(chunks)} chunks (of up to 10 items per chunk).')
     discord_client.enqueue_msg_thread(packet)
 
 
@@ -436,14 +458,11 @@ async def debug(interaction: discord.Interaction):
     lastheard = mesh_client.myNodeInfo.get('lastHeard') # TODO Need to fix this (replace myNodeInfo with soemthing else)
     if lastheard: # ignore if doesn't have lastHeard property
         ts = int(lastheard)
-        # if ts > time.time() - (time_limit * 60): # Only include if its less then time_limit
-        timezone = pytz.timezone(config.time_zone)
-        local_time = datetime.datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(timezone)
-        timestr = time_str_from_dt(local_time)
+        timestr = get_discord_ts_from_ts(ts)
     else:
         timestr = '???'
 
-    debug_text = f"```lastHeard: {timestr}\n"
+    debug_text = f"Last Heard: {timestr}\n```"
     for thing in ['user', 'deviceMetrics','localStats']:
         debug_text += f'{thing} items:\n'
         for key, value in mesh_client.myNodeInfo.get(thing,{}).items():
