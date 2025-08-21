@@ -146,12 +146,12 @@ class DiscordBot(discord.Client):
         """Takes in a message thread packet
         It should be a dictionary with this format:
         dict = {
-            'thread_name': <str>  # Name of the thread to create - if this is None, no thread is created
+            'original_msg_id': <int>  # This is the original message ID to edit or make the thread from
+            'thread_name': <str>  # (optional) Name of the thread to create - if this is None, no thread is created
             'content': <list of text messages or discord.embed's>,
             'first_msg': <str or discord.Embed>  # (optional) This is the first message to send in the thread
             'final_msg': <str or discord.Embed>  # (optional) This is the final message to send in the thread
             'original_msg_field': <util.embed_field>  # (optional) This is the original message field to edit
-            'original_msg_id': <int>  # (optional) This is the original message ID to edit
             'original_message_edit': <int>  # (optional) This is the original message edit index
             'original_message_edit_color': <int>  # (optional) Edit the original message to this color
         }
