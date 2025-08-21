@@ -146,63 +146,74 @@ class DiscordBot(discord.Client):
         """Takes in a message thread packet
         It should be a dictionary with this format:
         dict = {
-            'thread_id': <discord message id>,
+            'original_msg_id': <int>  # This is the original message ID to edit or make the thread from
+            'thread_name': <str>  # (optional) Name of the thread to create - if this is None, no thread is created
             'content': <list of text messages or discord.embed's>,
             'first_msg': <str or discord.Embed>  # (optional) This is the first message to send in the thread
             'final_msg': <str or discord.Embed>  # (optional) This is the final message to send in the thread
             'original_msg_field': <util.embed_field>  # (optional) This is the original message field to edit
-            'original_msg_id': <int>  # (optional) This is the original message ID to edit
             'original_message_edit': <int>  # (optional) This is the original message edit index
+            'original_message_edit_color': <int>  # (optional) Edit the original message to this color
         }
-
         """
-        thread_id = msg.get('thread_id')
-        thread = self.channel.get_thread(thread_id)
+        thread_name = msg.get('thread_name', None)
         content = msg.get('content', [])
         first_msg = msg.get('first_msg', None)
         final_msg = msg.get('final_msg', None)
         original_msg_field = msg.get('original_msg_field', None)
         original_msg_id = msg.get('original_msg_id', None)
         original_message_edit = msg.get('original_message_edit', None)
+        original_message_edit_color = msg.get('original_message_edit_color', None)
 
-        if first_msg:
-            if isinstance(first_msg, discord.Embed):
-                await thread.send(embed=first_msg)
-            else:
-                await thread.send(first_msg)
+        original_message = await self.channel.fetch_message(original_msg_id)
+        if thread_name:
+            thread = await original_message.create_thread(name=thread_name, auto_archive_duration=60)
+            thread_obj = self.channel.get_thread(thread.id)
 
-        if isinstance(content, list):
-            for item in content:
-                if isinstance(item, discord.Embed):
-                    await thread.send(embed=item)
+            if first_msg:
+                if isinstance(first_msg, discord.Embed):
+                    await thread_obj.send(embed=first_msg)
                 else:
-                    await thread.send(item)
-        elif isinstance(content, discord.Embed):
-            await thread.send(embed=content)
-        elif isinstance(content, str):
-            await thread.send(content)
+                    await thread_obj.send(first_msg)
 
-        if final_msg:
-            if isinstance(final_msg, discord.Embed):
-                await thread.send(embed=final_msg)
-            else:
-                await thread.send(final_msg)
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, discord.Embed):
+                        await thread_obj.send(embed=item)
+                    else:
+                        await thread_obj.send(item)
+            elif isinstance(content, discord.Embed):
+                await thread_obj.send(embed=content)
+            elif isinstance(content, str):
+                await thread_obj.send(content)
+
+            if final_msg:
+                if isinstance(final_msg, discord.Embed):
+                    await thread_obj.send(embed=final_msg)
+                else:
+                    await thread_obj.send(final_msg)
+        else:
+            thread_obj = None
 
         # option to edit the original message, assumes its an embed and only lets you add/edit 1 field in the embed
         if original_msg_field:
-            # edit the original message, get message
-            original_message = await self.channel.fetch_message(original_msg_id)
+            # edit the original message
             e = original_message.embeds[0]
             # if edit is None, add new field, otherwise edit the field given
             if original_message_edit is None:
                 e.add_field(**original_msg_field.return_field_items())
             else:
                 e.set_field_at(int(original_message_edit), **original_msg_field.return_field_items())
+            # edit color if given
+            if original_message_edit_color:
+                e.color = original_message_edit_color
+            # save edits
             await original_message.edit(embed=e)
 
-        # Then end thread
-        await asyncio.sleep(0.1)  # Give Discord a moment to process the messages
-        await thread.edit(archived=True)
+        if thread_obj:
+            # Then end thread
+            await asyncio.sleep(0.1)  # Give Discord a moment to process the messages
+            await thread_obj.edit(archived=True)
 
     async def process_mesh_response(self, msg):
         msg_type = msg.get('msg_type')

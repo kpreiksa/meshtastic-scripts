@@ -91,7 +91,6 @@ def time_str_from_dt(dt):
     return dt.strftime('%d %B %Y %I:%M:%S %p')
 
 def get_discord_ts_from_dt(dt: datetime.datetime):
-
     return get_discord_ts_from_ts(dt.timestamp())
 
 def convert_secs_to_pretty(sec):
@@ -188,6 +187,10 @@ class MeshBotColors():
     @classmethod
     def error(cls):
         return cls._item_dict['red']
+
+    @classmethod
+    def warning(cls):
+        return cls._item_dict['peach']
 
     @classmethod
     def TX_PENDING(cls):

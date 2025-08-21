@@ -86,6 +86,14 @@ class RXPacket(Base):
 
     ts = Column(DateTime(timezone=True))
 
+    # postgres db has tz but sqlite doesn't, so if db=postgres, return ts as-is, else return ts with utc tzinfo
+    @property
+    def ts_with_tz(self):
+        if self.ts.tzinfo is None:
+            return self.ts.replace(tzinfo=datetime.timezone.utc)
+        else:
+            return self.ts
+
     @property
     def is_text_message(self):
         return self.portnum == 'TEXT_MESSAGE_APP'
@@ -518,13 +526,13 @@ class MeshNodeDB(Base):
 
     def update_from_nodeinfo(d, mesh_client):
         bot_node_num = mesh_client.my_node_info.node_num_str
-        
+
         publisher_mesh_node_num = mesh_client.my_node_info.node_num,
         publisher_discord_bot_user_id = mesh_client.discord_client.user.id,
-            
+
         nodenum = d.get('from')
         if nodenum is not None:
-            
+
             decoded = d.get('decoded', {})
             user_dict = decoded.get('user', {})
             if user_dict:
@@ -534,8 +542,8 @@ class MeshNodeDB(Base):
                 mac_addr = user_dict.get('macaddr')
                 hw_model = user_dict.get('hwModel')
                 public_key = user_dict.get('publicKey')
-                    
-                    
+
+
             matching_node = mesh_client._db_session.query(MeshNodeDB).filter_by(node_num=nodenum).filter(MeshNodeDB.publisher_mesh_node_num == bot_node_num).first()
             if matching_node:
                 if user_dict:
@@ -581,7 +589,7 @@ class MeshNodeDB(Base):
                     crt_ts = datetime.datetime.now(datetime.timezone.utc),
                     upd_ts_nodedb = None,
                     upd_ts_nodeinfo = datetime.datetime.now(datetime.timezone.utc)
-                    
+
                 )
                 mesh_client._db_session.add(new_node)
                 mesh_client._db_session.commit()
