@@ -209,7 +209,7 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
         original_message_edit_color = MeshBotColors.error()
     else:
         thread_name = '/active cmd'
-        original_msg_field = embed_field(name="Results", value=f'{num_results} Found  (Took {convert_secs_to_pretty(toc)})', inline=False)
+        original_msg_field = embed_field(name="Results", value=f'{num_results} Found (Took {convert_secs_to_pretty(toc)})', inline=False)
         original_message_edit = None # None means add, 1 means replace first field
         original_message_edit_color = MeshBotColors.green()
 
@@ -431,7 +431,7 @@ async def all_nodes(interaction: discord.Interaction):
         original_message_edit_color = MeshBotColors.error()
     else:
         thread_name = '/all_nodes cmd'
-        original_msg_field = embed_field(name="Results", value=f'{num_results} Found  (Took {convert_secs_to_pretty(toc)})', inline=False)
+        original_msg_field = embed_field(name="Results", value=f'{num_results} Found (Took {convert_secs_to_pretty(toc)})', inline=False)
         original_message_edit = None
         original_message_edit_color = MeshBotColors.green()
 
