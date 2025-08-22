@@ -21,14 +21,17 @@ from mesh_node_classes import MeshNode
 from db_classes import TXPacket, RXPacket, ACK, MeshNodeDB, discord_bot_id
 from version import __version__
 
+
 import util
 # move all of this to config
 battery_warning = 15 # move to config
 
 
 class MeshClient():
+    '''Class to handle meshtastic interactions.'''
 
     def onReceiveMesh(self, packet, interface):  # Called when a packet arrives from mesh.
+        """Called when a packet arrives from the mesh."""
 
         try:
             pkt_id = packet.get('id')
@@ -44,22 +47,36 @@ class MeshClient():
                 self._db_session.add(db_packet)
                 try:
                     self._db_session.commit() # save back to db
+                    logging.info(f'Packet saved to DB with packet_id: {db_packet.packet_id}')
                 except Exception as e:
                     logging.error(f'DB ROLLBACK: {str(e)}')
                     self._db_session.rollback()
+                    
+            # This section is to notify the discord client when different packets are received
+            # for example, when a text message is received, we want that message to be sent to discord
+            # when a nodeinfo packet is received, we want to update the nodeinfo in the database
+            # when an ACK is received, we want to update the corresponding TXPacket in the database (and notify discord that the ACK was received)
 
+            # text messages: both channel and DMs
             if db_packet.is_text_message:
                 self.discord_client.enqueue_mesh_text_msg_received(db_packet)
 
+            # nodeinfo packets - update the MeshNodeDB
             elif db_packet.portnum == 'NODEINFO_APP':
                 # get the nodeinfo and update the MeshNodeDB
                 MeshNodeDB.update_from_nodeinfo(packet, self)
 
+            # traceroute packets - not implemented yet
             elif db_packet.portnum == 'TRACEROUTE_APP':
                 # get the nodeinfo and update the MeshNodeDB
                 pass
-
+            
+            # ACK packets
             elif db_packet.portnum == 'ROUTING_APP':
+                # NOTE: There are 2 types of ACK - implicit and explicit
+                # Implicit means that your node heard a relay of your message, so you know it was received by at least 1 node
+                # Explicit means that the destination node sent an ACK back to you (this only works for DMs, not channel messages)
+                
                 if db_packet.priority == 'ACK':
                     if db_packet.request_id:
                         logging.info(f'Got ACK from {db_packet.src_descriptive}. Request ID: {db_packet.request_id}')
@@ -88,6 +105,7 @@ class MeshClient():
                             self.discord_client.enqueue_ack(ack_obj)
                         else:
                             logging.error(f'No matching packet found for request_id: {db_packet.request_id}.\n Maybe the packet isnt in the DB yet, and/or is this a self-ack?')
+            
             else:
                 if portnum:
                     logging.info(f'Received unhandled packet type: {portnum} from: {from_id}')
@@ -104,6 +122,10 @@ class MeshClient():
             logging.info(f"END onReceiveMesh: {db_packet.portnum} packet (id: [{pkt_id}]) received from: {db_packet.src_descriptive}") # For debugging.
 
     def onConnectionMesh(self, interface, topic=None):
+        """Called when connection to mesh device is established.
+        
+        This is where we can first talk to the node, get our local node info, and get the list of nodes from the device database.
+        """
         # called the first time we connect to the node. Initialize the db from the device's node db
 
         logging.info('onConnectionMesh: Connection Established')
@@ -191,8 +213,10 @@ class MeshClient():
 
     def onNodeUpdated(self, node, interface):
         # this happens when a node gets updated... we should update the database
+        logging.info('START: onNodeUpdated')
         logging.info(str(type(node)))
         logging.info(str(dir(node)))
+        logging.info('END: onNodeUpdated')
 
     def onMsgResponse(self, d):
         # if there is a request Id... look it up in the Db and acknowledge
@@ -301,14 +325,13 @@ class MeshClient():
             logging.info(f'Unsupported interface: {interface_info.interface_type}')
             return
 
-
-
     def link_discord(self, discord_client):
         self.discord_client = discord_client
 
     # TODO: remove these and use node objs/db everywhere
 
     def get_long_name(self, node_id=None, default = '?'):
+        # TODO: Update this to use the MeshNodeDB class
         if node_id in self.nodes:
             return self.nodes[node_id]['user'].get('longName', default)
         elif node_id.lower() == '!ffffffff':
@@ -316,6 +339,7 @@ class MeshClient():
         return default
 
     def get_short_name(self, node_id, default = '?'):
+        # TODO: Update this to use the MeshNodeDB class
         if node_id in self.nodes:
             return self.nodes[node_id]['user'].get('shortName', default)
         elif node_id.lower() == '!ffffffff':
@@ -454,39 +478,31 @@ class MeshClient():
         """
 
         logging.info(f'get_nodes_from_db has been called with: {time_limit} mins')
-
-        if time_limit is not None:
-            # get all packets in the last x minutes, then get the node info
-            active_after = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=int(time_limit))
-            logging.info(f'Getting node_nums based on active time')
-            with self._db_lock:
-                node_nums = self._db_session.query(RXPacket.src_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).filter(RXPacket.ts >= active_after).distinct().all()
-            node_nums = [x[0] for x in node_nums]
-            # get nodes from the node db
-            logging.info(f'Getting active nodes from node db')
-            with self._db_lock:
-                nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.node_num.in_(node_nums)).filter(MeshNodeDB.publisher_mesh_node_num == self.my_node_info.node_num_str).all()
-        else:
-            logging.info(f'Getting all nodes from node db')
-            with self._db_lock:
-                nodes = self._db_session.query(MeshNodeDB).filter(MeshNodeDB.publisher_mesh_node_num == self.my_node_info.node_num_str).all()
+        
+        with self._db_lock:
+            latest_packet_info = RXPacket.latest_packets_for_publisher(self, self.my_node_info.node_num_str, time_limit=time_limit)
+            pkt_cnt_by_id_all_time = RXPacket.get_pkt_cnt_for_src_id_within_time(self, self.my_node_info.node_num_str, time_limit=None)
+            pkt_cnt_by_id_24_hr = RXPacket.get_pkt_cnt_for_src_id_within_time(self, self.my_node_info.node_num_str, time_limit=60*24)
+        
 
         nodelist = []
-        for node in nodes:
-            if node.node_num != self.my_node_info.node_num: # ignore ourselves
-                # add lastHeard via latest packet RX'd and its type
-                with self._db_lock:
-                    recent_packet_for_node = self._db_session.query(RXPacket).filter(RXPacket.src_num == node.node_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).order_by(RXPacket.ts.desc()).first()
-                    hr_ago_24 = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
-                    cnt_packets_24_hr = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).filter(RXPacket.ts >= hr_ago_24).count()
-                    cnt_packets_from_node = self._db_session.query(RXPacket.id).filter(RXPacket.src_num == node.node_num).filter(RXPacket.publisher_mesh_node_num == self.my_node_info.node_num_str).count()
-                last_packet_str = ''
-                if recent_packet_for_node:
-                    last_packet_str = f'{recent_packet_for_node.portnum} at {util.get_discord_ts_from_dt(recent_packet_for_node.ts_with_tz)}'
-                    nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | Last Packet: {last_packet_str} | {cnt_packets_from_node} Total Packets ({cnt_packets_24_hr} in past day)", recent_packet_for_node.ts_with_tz])
-                else:
-                    nodelist.append([f"\n {node.user_id} | {node.short_name} | {node.long_name} | No Packets in DB (Yet!)", datetime.datetime.fromtimestamp(0, datetime.timezone.utc)])
-
+        for node_pkt in latest_packet_info:
+            # this will be per node because the query uses a window function to get latest per src_id
+            
+            pkt_cnt = pkt_cnt_by_id_all_time.get(node_pkt.src_id, 0)
+            pkt_cnt_24 = pkt_cnt_by_id_24_hr.get(node_pkt.src_id, 0)
+            
+            # TODO: not sure why this needs to be here... it isn't returning an object...
+            
+            if node_pkt.ts.tzinfo is None:
+                ts_with_tz = node_pkt.ts.replace(tzinfo=pytz.UTC)
+            else:
+                ts_with_tz = node_pkt.ts
+            
+            last_packet_str = f'{node_pkt.portnum} at {util.get_discord_ts_from_dt(ts_with_tz)}'
+            
+            nodelist.append([f"**{node_pkt.src_id} | {node_pkt.src_short_name} | {node_pkt.src_long_name} **\nLast Packet: {last_packet_str}\n{pkt_cnt} Packets RX'd ({pkt_cnt_24} in past day)", ts_with_tz])
+            
         try:
             # sort nodelist and remove ts from it
             nodelist_sorted = sorted(nodelist, key=lambda x: x[1], reverse=True)
@@ -496,7 +512,7 @@ class MeshClient():
             nodelist_sorted = [x[0] for x in nodelist]
             nodelist_sorted.insert(0, 'WARNING: The following list is not sorted!')
 
-        nodelist_chunks = ["".join(nodelist_sorted[i:i + 10]) for i in range(0, len(nodelist_sorted), 10)]
+        nodelist_chunks = ["\n\n".join(nodelist_sorted[i:i + 10]) for i in range(0, len(nodelist_sorted), 10)]
         return nodelist_chunks, len(nodelist)
 
     def check_battery(self, channel, battery_warning=battery_warning):
@@ -661,7 +677,7 @@ class MeshClient():
 
     def enqueue_traceroute(self, node_id):
         """
-        Requests all nodes in node db.
+        Sends a traceroute request to the specified node ID.
 
         Args:
             node_id: Node ID to traceroute

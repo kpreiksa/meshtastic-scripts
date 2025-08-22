@@ -103,3 +103,9 @@ We've tested/developed this mainly using serial connections. We know BLE and TCP
 ## GitHub Actions - `./github_action_scripts`
 
 There is 1 GitHub action that checks to make sure the version has been changed (doesn't explicitly check for increasing version number). Only runs this check if something in /discord-bot/bot is modified.
+
+## Other Development Info / Rules
+
+1. `mesh_client.py` should remain solely for meshtastic interactions. It should not rely on discord at all
+2. Discord interactions should occur within `discord_client.py` (for event-driven things - i.e. things from the mesh), or within `main.py` (for things that originate as commands)
+3. Database interactions should eventually live in a `database_client.py` which coordinates with the database. Until, and possibly even after then, as much query logic should be in the classes in `db_classes.py` as possible

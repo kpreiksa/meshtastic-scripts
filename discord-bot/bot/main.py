@@ -97,20 +97,6 @@ async def help_command(interaction: discord.Interaction):
     view = HelpView()
     await interaction.followup.send(embed=embed, view=view)
 
-@discord_client.tree.command(name="sendid", description="Send a message to a specific node.")
-@discord_client.deprecated_command('This command is deprecated, use /dm instead: /dm <node> <message>')
-async def sendid(interaction: discord.Interaction, nodeid: str, message: str):
-    logging.info(f'/sendid command received. Deprecated')
-
-@discord_client.tree.command(name="sendnum", description="Send a message to a specific node.")
-@discord_client.deprecated_command('This command is deprecated, use /dm instead: /dm <node> <message>')
-async def sendnum(interaction: discord.Interaction, nodenum: int, message: str):
-    logging.info(f'/sendnum command received. Deprecated')
-
-@discord_client.tree.command(name="send_shortname", description="Send a message to a specific node.")
-@discord_client.deprecated_command(f'This command is deprecated, use /dm instead: /dm <node> <message>')
-async def send_shortname(interaction: discord.Interaction, node_name: str, message: str):
-    logging.info(f'/send_shortname command received. Deprecated')
 
 @discord_client.tree.command(name="dm", description="Send a message to a specific node.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
@@ -228,6 +214,17 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
 @discord_client.tree.command(name="nodeinfo", description="Gets info for a node from the database")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def nodeinfo(interaction: discord.Interaction, node_id: str):
+    
+    # TODO: Move this functionality to mesh_client. Potentially use queues like other commands
+    # PROS:
+    # - it shouldn't be inline
+    # - it would be easier to re-use fuzzywuzzy logic
+    # - remove DB logic from main.py... this is the only method which calls into the DB directly
+    # CONS:
+    # - This data doesn't really come from "the mesh" - it comes from the database
+    
+    # Options:
+    # - use db_classes.py or make a new database_client
 
     logging.info(f'/nodeinfo received, doing query for node ID: {node_id}')
     current_time = get_current_time_str()

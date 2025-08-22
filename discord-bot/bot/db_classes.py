@@ -1,10 +1,14 @@
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, Double, ForeignKey, JSON, DateTime, BigInteger
+from sqlalchemy import select, over
+from sqlalchemy.sql import func
 from db_base import Base
 
-from sqlalchemy.orm import relationship
+
+from sqlalchemy.orm import relationship, aliased
 import datetime
 
 import meshtastic
+from google.protobuf.json_format import MessageToDict
 from version import __version__
 
 class RXPacket(Base):
@@ -35,6 +39,8 @@ class RXPacket(Base):
     rx_snr = Column(Double)
     to_all = Column(Boolean)
     want_ack = Column(Boolean)
+    
+    # packet_json = Column(JSON)
 
     # text message
     text = Column(String)
@@ -171,6 +177,11 @@ class RXPacket(Base):
 
         decoded = d.get('decoded', {})
         portnum = decoded.get('portnum')
+        
+        packet_json = None
+        raw_packet = d.get('raw')
+        if raw_packet is not None:
+            packet_json = MessageToDict(raw_packet)
 
         text = None
         bitfield = None
@@ -305,6 +316,7 @@ class RXPacket(Base):
             rx_snr = rx_snr,
             to_all = to_all,
             want_ack = want_ack,
+            # packet_json = packet_json,
             text = text,
             bitfield = bitfield,
             emoji = emoji,
@@ -339,6 +351,72 @@ class RXPacket(Base):
 
         )
         return out
+
+    def latest_packets_for_publisher(mesh_client, publisher_mesh_node_num, time_limit=None):
+        
+        time_after = None
+        if time_limit is not None:
+            time_limit = int(time_limit)
+            time_after = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=time_limit)
+            
+        if time_after is not None:
+            # Apply your filter first
+            base_q = (
+                mesh_client._db_session.query(RXPacket)
+                .filter(RXPacket.publisher_mesh_node_num == publisher_mesh_node_num)
+                .filter(RXPacket.ts >= time_after)
+                .subquery()
+            )
+        else:
+            base_q = (
+                mesh_client._db_session.query(RXPacket)
+                .filter(RXPacket.publisher_mesh_node_num == publisher_mesh_node_num)
+                .subquery()
+            )
+
+        BasePacket = aliased(RXPacket, base_q)  # alias so we can refer to columns
+        
+        
+        row_number = func.row_number().over(
+            partition_by=base_q.c.src_id,
+            order_by=base_q.c.ts.desc()
+        )
+        
+        ranked_q = (
+            mesh_client._db_session.query(base_q, row_number.label("rn"))
+            .subquery()
+        )
+        
+        final_q = (
+            mesh_client._db_session.query(ranked_q)
+            .filter(ranked_q.c.rn == 1)
+        )
+
+        latest_packets_out = final_q.all()
+        
+        return latest_packets_out
+    
+    def get_pkt_cnt_for_src_id_within_time(mesh_client, publisher_mesh_node_num, time_limit = None):
+        
+        time_after = None
+        if time_limit is not None:
+            time_limit = int(time_limit)
+            time_after = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=time_limit)
+            
+        # use ORM query to get count of packets group by src_id
+        query = mesh_client._db_session.query(
+            RXPacket.src_id,
+            func.count(RXPacket.id).label('pkt_count')
+        ).filter(
+            RXPacket.publisher_mesh_node_num == publisher_mesh_node_num
+        )
+        if time_after is not None:
+            query = query.filter(RXPacket.ts >= time_after)
+        query = query.group_by(RXPacket.src_id)
+        results = query.all()
+        pkt_count_dict = {row.src_id: row.pkt_count for row in results}
+        return pkt_count_dict
+        
 
 class TXPacket(Base):
     __tablename__ = 'tx_packets'  # Name of the table in the database
