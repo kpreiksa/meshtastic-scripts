@@ -234,6 +234,9 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
     embeds = []
 
     n = mesh_client.get_node_num(node_id=node_id)
+    
+    # TODO: Should try to show RX packets even if the node doesn't exist in MeshNodeDB
+    
 
     # convert id to num to look up node
     matching_nodes = mesh_client._db_session.query(db_classes.MeshNodeDB).filter(db_classes.MeshNodeDB.node_num == n).filter(db_classes.MeshNodeDB.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).all()

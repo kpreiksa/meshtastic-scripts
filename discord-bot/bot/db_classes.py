@@ -11,6 +11,8 @@ import meshtastic
 from google.protobuf.json_format import MessageToDict
 from version import __version__
 
+import logging
+
 class RXPacket(Base):
     __tablename__ = 'rx_packets'  # Name of the table in the database
     id = Column(Integer, primary_key=True)
@@ -620,8 +622,7 @@ class MeshNodeDB(Base):
                 mac_addr = user_dict.get('macaddr')
                 hw_model = user_dict.get('hwModel')
                 public_key = user_dict.get('publicKey')
-
-
+                
             matching_node = mesh_client._db_session.query(MeshNodeDB).filter_by(node_num=nodenum).filter(MeshNodeDB.publisher_mesh_node_num == bot_node_num).first()
             if matching_node:
                 if user_dict:
@@ -639,9 +640,12 @@ class MeshNodeDB(Base):
 
                     if hw_model is not None:
                         matching_node.user_hw_model_nodeinfo = hw_model
-
-                    if public_key is not None:
-                        matching_node.user_public_key_nodeinfo = public_key
+                        
+                    # check if the received public key matches the one in the db
+                    # if it doesn't, it potentially means a security issue (ie someone spoofing a node)
+                    # if public_key is not None and matching_node.user_public_key_nodeinfo is not None and public_key != matching_node.user_public_key_nodeinfo:
+                    #     logging.error(f'Public key received from nodeinfo: {public_key} does not match db value: {matching_node.user_public_key_nodeinfo}')
+                        
 
                 matching_node.upd_ts_nodeinfo = datetime.datetime.now(datetime.timezone.utc)
             else:

@@ -499,7 +499,11 @@ class MeshClient():
             else:
                 ts_with_tz = node_pkt.ts
             
-            last_packet_str = f'{node_pkt.portnum} at {util.get_discord_ts_from_dt(ts_with_tz)}'
+            last_packet_str = f'{node_pkt.portnum} - {util.get_discord_ts_from_dt(ts_with_tz, relative=True)}'
+            
+            # exclude self node
+            if node_pkt.src_id == self.my_node_info.user_info.user_id:
+                continue
             
             nodelist.append([f"**{node_pkt.src_id} | {node_pkt.src_short_name} | {node_pkt.src_long_name} **\nLast Packet: {last_packet_str}\n{pkt_cnt} Packets RX'd ({pkt_cnt_24} in past day)", ts_with_tz])
             
