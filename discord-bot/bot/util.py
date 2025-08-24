@@ -78,20 +78,26 @@ class DiscordInteractionInfo():
 def get_current_time_str():
     return datetime.datetime.now(datetime.timezone.utc).strftime('%d %B %Y %I:%M:%S %p')
 
-def get_current_time_discord_str():
-    return f'<t:{int(time.time())}:f>'
+def get_current_time_discord_str(relative=False):
+    if relative:
+        return f'<t:{int(time.time())}:R>'
+    else:
+        return f'<t:{int(time.time())}:f>'
 
 def time_from_ts(ts):
     return datetime.datetime.fromtimestamp(ts).strftime('%d %B %Y %I:%M:%S %p')
 
-def get_discord_ts_from_ts(ts):
-    return f'<t:{int(ts)}:f>'
+def get_discord_ts_from_ts(ts, relative=False):
+    if relative:
+        return f'<t:{int(ts)}:R>'
+    else:
+        return f'<t:{int(ts)}:f>'
 
 def time_str_from_dt(dt):
     return dt.strftime('%d %B %Y %I:%M:%S %p')
 
-def get_discord_ts_from_dt(dt: datetime.datetime):
-    return get_discord_ts_from_ts(dt.timestamp())
+def get_discord_ts_from_dt(dt: datetime.datetime, relative=False):
+    return get_discord_ts_from_ts(dt.timestamp(), relative=relative)
 
 def convert_secs_to_pretty(sec):
     if sec is None:
