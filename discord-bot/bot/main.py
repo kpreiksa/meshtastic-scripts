@@ -374,6 +374,8 @@ async def describe_self(interaction: discord.Interaction):
     text = [
         f'**MeshBot Version:** {__version__}',
         f'**Node ID:** {mesh_client.my_node_info.user_info.user_id}',
+        f'**Node Num:** {mesh_client.my_node_info.node_num_str}',
+        f'**Discord Bot ID:** {discord_client.user.id}',
         f'**Short Name:** {mesh_client.my_node_info.user_info.short_name}',
         f'**Long Name:** {mesh_client.my_node_info.user_info.long_name}',
         f'**MAC Address:** {mesh_client.my_node_info.user_info.mac_address}',
