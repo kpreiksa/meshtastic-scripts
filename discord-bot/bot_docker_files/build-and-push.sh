@@ -30,36 +30,37 @@ fi
 # === Use MESHBOT_VERSION for Docker tag ===
 TAG="$MESHBOT_VERSION"
 FULL_IMAGE_NAME="${REGISTRY}/${IMAGE_NAME}:${TAG}"
-
-# === Build the image ===
-echo "🚧 Building image: ${FULL_IMAGE_NAME}"
-docker build -f "$DOCKERFILE" -t "$FULL_IMAGE_NAME" "$CONTEXT_DIR"
-
-if [ $? -ne 0 ]; then
-    echo "❌ Build failed."
-    exit 1
-fi
-
-# === Push the image ===
-echo "📤 Pushing image to registry: ${FULL_IMAGE_NAME}"
-docker push "$FULL_IMAGE_NAME"
-
-if [ $? -ne 0 ]; then
-    echo "❌ Push failed. Make sure registry is reachable and insecure registry is configured (if HTTP)."
-    exit 1
-fi
-
-# === Tag and push 'latest' pointing to the same image ===
 LATEST_IMAGE_NAME="${REGISTRY}/${IMAGE_NAME}:latest"
-echo "🔄 Tagging ${FULL_IMAGE_NAME} as ${LATEST_IMAGE_NAME}"
-docker tag "$FULL_IMAGE_NAME" "$LATEST_IMAGE_NAME"
 
-echo "📤 Pushing image to registry: ${LATEST_IMAGE_NAME}"
-docker push "$LATEST_IMAGE_NAME"
+# === Setup buildx for multi-platform builds ===
+BUILDER_NAME="multiarch-builder"
+echo "🔧 Setting up buildx builder for multi-platform builds"
+
+# Create builder if it doesn't exist
+if ! docker buildx inspect "$BUILDER_NAME" >/dev/null 2>&1; then
+    echo "📦 Creating new buildx builder: $BUILDER_NAME"
+    docker buildx create --name "$BUILDER_NAME" --driver docker-container --bootstrap
+fi
+
+# Use the builder
+docker buildx use "$BUILDER_NAME"
+
+# === Build and push multi-platform images ===
+echo "🚧 Building and pushing multi-platform image: ${FULL_IMAGE_NAME}"
+echo "🎯 Target platforms: linux/amd64, linux/arm64/v8"
+
+docker buildx build \
+    --platform linux/amd64,linux/arm64/v8 \
+    -f "$DOCKERFILE" \
+    -t "$FULL_IMAGE_NAME" \
+    -t "$LATEST_IMAGE_NAME" \
+    --push \
+    "$CONTEXT_DIR"
 
 if [ $? -ne 0 ]; then
-    echo "❌ Push of latest failed."
+    echo "❌ Multi-platform build and push failed."
     exit 1
 fi
 
-echo "✅ Done: ${FULL_IMAGE_NAME} and ${LATEST_IMAGE_NAME} have been built and pushed."
+echo "✅ Done: Multi-platform images ${FULL_IMAGE_NAME} and ${LATEST_IMAGE_NAME} have been built and pushed."
+echo "📋 Supported platforms: linux/amd64, linux/arm64/v8"

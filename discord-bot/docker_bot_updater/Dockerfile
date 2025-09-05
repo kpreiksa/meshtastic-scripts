@@ -6,7 +6,21 @@ RUN apt-get update && apt-get install -y \
     docker.io \
     git \
     curl \
+    ca-certificates \
+    bash \
     && rm -rf /var/lib/apt/lists/*
+
+# Create docker CLI plugins directory
+RUN mkdir -p /root/.docker/cli-plugins/
+
+# Download and install Docker Buildx plugin
+RUN BUILDX_VERSION=$(curl -s https://api.github.com/repos/docker/buildx/releases/latest | grep '"tag_name"' | cut -d'"' -f4) && \
+    curl -L "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-amd64" \
+    -o /root/.docker/cli-plugins/docker-buildx && \
+    chmod +x /root/.docker/cli-plugins/docker-buildx
+
+# Verify buildx installation
+RUN docker buildx version
 
 # Set the working directory inside the container
 WORKDIR /app

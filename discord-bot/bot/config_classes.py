@@ -152,7 +152,7 @@ class Config():
         DB_PORT = os.environ.get('DB_PORT', '5432')  # Default is 5432
         DB_USERNAME = os.environ.get('DB_USERNAME')
         DB_PASSWORD = os.environ.get('DB_PASSWORD')
-        DB_NAME = os.environ.get('DB_NAME', 'mydatabase')  # Default is mydatabase
+        DB_NAME = os.environ.get('DB_NAME', 'mydatabase')  # Default is mydatabase # TODO this doesn't work if using sqlite, I think this is set in connection string, so maybe set the default to NONE
         DB_DIR = os.environ.get('DB_DIR', 'db')
 
         required_vars = {
