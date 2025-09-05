@@ -26,6 +26,7 @@ logging.basicConfig(
 )
 
 def main():
+    print(f"Starting Meshtastic Discord Bot Updater")
     repo_path = '/tmp/meshtastic-scripts'
     # remove if it exists
     if os.path.exists(repo_path):
@@ -139,66 +140,135 @@ def build_and_push_docker_image(version):
     """Builds and pushes the docker image for meshbot in meshtastic-scripts
     Dockerfile and configuration files are in ./discord-bot/bot_docker_files
     """
-    client = docker.from_env()
-    try:
-        # Build context should be the discord-bot directory (one level up from dockerfile_path)
-        context_dir = './discord-bot'
-        dockerfile_relative_path = 'bot_docker_files/Dockerfile'
-
-        logging.info(f"🚧 Building image: {DOCKER_REG}/{DOCKER_IMAGE}:{version}")
-
-        # Build the image with build output
-        image, build_logs = client.images.build(
-            path=context_dir,
-            dockerfile=dockerfile_relative_path,
-            tag=f"{DOCKER_REG}/{DOCKER_IMAGE}:{version}",
-            rm=True,  # Remove intermediate containers
-            forcerm=True  # Always remove intermediate containers
-        )
-
-        # Print build output
-        for log in build_logs:
-            if 'stream' in log:
-                logging.info(log['stream'].strip())
-            elif 'error' in log:
-                logging.error(f"❌ Build error: {log['error']}")
-                return False
-
-        logging.info(f"✅ Build completed: {DOCKER_REG}/{DOCKER_IMAGE}:{version}")
-
-        # Tag as latest
-        image.tag(f"{DOCKER_REG}/{DOCKER_IMAGE}", "latest")
-
-        # Test registry connection before pushing
-        if not test_registry_connection_simple():
-            logging.error("❌ Registry not accessible, skipping push")
-            return False
-
-        # Wait a moment for the registry to be ready
-        time.sleep(5)
-
-        # Try pushing with a simpler approach first
-        if simple_push(f"{DOCKER_REG}/{DOCKER_IMAGE}:{version}"):
-            logging.info(f"✅ Successfully pushed {DOCKER_REG}/{DOCKER_IMAGE}:{version}")
-        else:
-            logging.error(f"❌ Failed to push {DOCKER_REG}/{DOCKER_IMAGE}:{version}")
-            return False
-
-        # Push latest
-        if simple_push(f"{DOCKER_REG}/{DOCKER_IMAGE}:latest"):
-            logging.info(f"✅ Successfully pushed {DOCKER_REG}/{DOCKER_IMAGE}:latest")
-        else:
-            logging.error(f"❌ Failed to push {DOCKER_REG}/{DOCKER_IMAGE}:latest")
-            return False
-
-        logging.info(f"✅ Successfully built and pushed {DOCKER_REG}/{DOCKER_IMAGE}:{version} and latest")
-        return True
-
-    except Exception as e:
-        logging.error(f"❌ Build/push failed: {str(e)}")
+    # Test registry connection before building
+    if not test_registry_connection_simple():
+        logging.error("❌ Registry not accessible, skipping build")
         return False
-    finally:
-        client.close()
+
+    # Verify buildx is available
+    try:
+        result = subprocess.run(
+            ["docker", "buildx", "version"],
+            capture_output=True, text=True, check=False
+        )
+        if result.returncode != 0:
+            logging.error("❌ Docker buildx not available")
+            logging.error(f"STDERR: {result.stderr}")
+            return False
+        logging.info(f"✅ Docker buildx available: {result.stdout.strip()}")
+    except Exception as e:
+        logging.error(f"❌ Error checking buildx availability: {e}")
+        return False
+
+    # Create buildkitd configuration for insecure registry
+    buildkitd_config = f'''
+debug = true
+
+insecure-entitlements = [ "network.host", "security.insecure"]
+
+[registry."{DOCKER_REG}"]
+  http = true
+  insecure = true
+'''
+
+    config_dir = "/tmp/buildkit"
+    config_file = f"{config_dir}/buildkitd.toml"
+    try:
+        os.makedirs(config_dir, exist_ok=True)
+        with open(config_file, 'w') as f:
+            f.write(buildkitd_config)
+        logging.info(f"✅ Created buildkitd config for insecure registry: {config_file}")
+    except Exception as e:
+        logging.error(f"❌ Failed to create buildkitd config: {e}")
+        return False
+
+    # Setup buildx for multi-platform builds
+    builder_name = "multiarch-builder"
+    logging.info("🔧 Setting up buildx builder for multi-platform builds")
+    logging.info("📋 Note: Insecure registry configuration should be done on the host Docker daemon")
+
+    # Remove existing builder to ensure clean config
+    try:
+        subprocess.run(
+            ["docker", "buildx", "rm", builder_name],
+            capture_output=True, text=True, check=False
+        )
+        logging.info(f"🗑️ Removed existing builder: {builder_name}")
+    except:
+        pass
+
+    # Create builder with buildkitd config
+    try:
+        logging.info(f"📦 Creating new buildx builder: {builder_name}")
+        create_result = subprocess.run([
+            "docker", "buildx", "create",
+            "--name", builder_name,
+            "--driver", "docker-container",
+            f"--config", config_file,
+            "--bootstrap"
+        # ], capture_output=True, text=True, check=False)
+        ], capture_output=True, text=True, check=False)
+
+        if create_result.returncode != 0:
+            logging.error(f"❌ Failed to create buildx builder:")
+            logging.error(f"STDOUT: {create_result.stdout}")
+            logging.error(f"STDERR: {create_result.stderr}")
+            return False
+        logging.info(f"✅ Successfully created buildx builder: {builder_name}")
+        logging.info(f"STDOUT: {create_result.stdout}")
+    except Exception as e:
+        logging.error(f"❌ Exception during buildx builder setup: {e}")
+        return False
+
+    # Use the builder
+    try:
+        use_result = subprocess.run(
+            ["docker", "buildx", "use", builder_name],
+            capture_output=True, text=True, check=False
+        )
+        if use_result.returncode != 0:
+            logging.error(f"❌ Failed to use buildx builder:")
+            logging.error(f"STDOUT: {use_result.stdout}")
+            logging.error(f"STDERR: {use_result.stderr}")
+            return False
+        logging.info(f"✅ Using buildx builder: {builder_name}")
+    except Exception as e:
+        logging.error(f"❌ Exception using buildx builder: {e}")
+        return False
+
+    # Fixed paths to match the actual directory structure
+    context_dir = './discord-bot'
+    dockerfile_path = './discord-bot/bot_docker_files/Dockerfile'
+
+    logging.info(f"🚧 Building and pushing multi-platform image: {DOCKER_REG}/{DOCKER_IMAGE}:{version}")
+    logging.info("🎯 Target platforms: linux/amd64, linux/arm64/v8")
+    logging.info(f"🔒 Using insecure registry: {DOCKER_REG}")
+
+    # Build and push multi-platform images using buildx
+    command = [
+        "docker", "buildx", "build",
+        "--platform", "linux/amd64,linux/arm64/v8",
+        "-f", dockerfile_path,
+        "-t", f"{DOCKER_REG}/{DOCKER_IMAGE}:{version}",
+        "-t", f"{DOCKER_REG}/{DOCKER_IMAGE}:latest",
+        "--push",
+        context_dir
+    ]
+
+    logging.info(f"Running buildx command: {' '.join(command)}")
+    result = subprocess.run(command, capture_output=True, text=True)
+
+    if result.returncode == 0:
+        logging.info(f"✅ Successfully built and pushed multi-platform images:")
+        logging.info(f"   - {DOCKER_REG}/{DOCKER_IMAGE}:{version}")
+        logging.info(f"   - {DOCKER_REG}/{DOCKER_IMAGE}:latest")
+        logging.info("📋 Supported platforms: linux/amd64, linux/arm64/v8")
+        return True
+    else:
+        logging.error(f"❌ Multi-platform build and push failed:")
+        logging.error(f"STDOUT: {result.stdout}")
+        logging.error(f"STDERR: {result.stderr}")
+        return False
 
 def test_registry_connection_simple():
     """Simple registry connection test"""
