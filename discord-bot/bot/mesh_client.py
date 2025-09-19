@@ -47,11 +47,11 @@ class MeshClient():
                 self._db_session.add(db_packet)
                 try:
                     self._db_session.commit() # save back to db
-                    logging.info(f'Packet saved to DB with packet_id: {db_packet.packet_id}')
+                    logging.info(f'Packet saved to DB with packet_id: {db_packet.pkt_id}')
                 except Exception as e:
                     logging.error(f'DB ROLLBACK: {str(e)}')
                     self._db_session.rollback()
-                    
+
             # This section is to notify the discord client when different packets are received
             # for example, when a text message is received, we want that message to be sent to discord
             # when a nodeinfo packet is received, we want to update the nodeinfo in the database
@@ -70,13 +70,13 @@ class MeshClient():
             elif db_packet.portnum == 'TRACEROUTE_APP':
                 # get the nodeinfo and update the MeshNodeDB
                 pass
-            
+
             # ACK packets
             elif db_packet.portnum == 'ROUTING_APP':
                 # NOTE: There are 2 types of ACK - implicit and explicit
                 # Implicit means that your node heard a relay of your message, so you know it was received by at least 1 node
                 # Explicit means that the destination node sent an ACK back to you (this only works for DMs, not channel messages)
-                
+
                 if db_packet.priority == 'ACK':
                     if db_packet.request_id:
                         logging.info(f'Got ACK from {db_packet.src_descriptive}. Request ID: {db_packet.request_id}')
@@ -105,7 +105,7 @@ class MeshClient():
                             self.discord_client.enqueue_ack(ack_obj)
                         else:
                             logging.error(f'No matching packet found for request_id: {db_packet.request_id}.\n Maybe the packet isnt in the DB yet, and/or is this a self-ack?')
-            
+
             else:
                 if portnum:
                     logging.info(f'Received unhandled packet type: {portnum} from: {from_id}')
@@ -123,7 +123,7 @@ class MeshClient():
 
     def onConnectionMesh(self, interface, topic=None):
         """Called when connection to mesh device is established.
-        
+
         This is where we can first talk to the node, get our local node info, and get the list of nodes from the device database.
         """
         # called the first time we connect to the node. Initialize the db from the device's node db
@@ -478,35 +478,35 @@ class MeshClient():
         """
 
         logging.info(f'get_nodes_from_db has been called with: {time_limit} mins')
-        
+
         with self._db_lock:
             latest_packet_info = RXPacket.latest_packets_for_publisher(self, self.my_node_info.node_num_str, time_limit=time_limit)
             pkt_cnt_by_id_all_time = RXPacket.get_pkt_cnt_for_src_id_within_time(self, self.my_node_info.node_num_str, time_limit=None)
             pkt_cnt_by_id_24_hr = RXPacket.get_pkt_cnt_for_src_id_within_time(self, self.my_node_info.node_num_str, time_limit=60*24)
-        
+
 
         nodelist = []
         for node_pkt in latest_packet_info:
             # this will be per node because the query uses a window function to get latest per src_id
-            
+
             pkt_cnt = pkt_cnt_by_id_all_time.get(node_pkt.src_id, 0)
             pkt_cnt_24 = pkt_cnt_by_id_24_hr.get(node_pkt.src_id, 0)
-            
+
             # TODO: not sure why this needs to be here... it isn't returning an object...
-            
+
             if node_pkt.ts.tzinfo is None:
                 ts_with_tz = node_pkt.ts.replace(tzinfo=pytz.UTC)
             else:
                 ts_with_tz = node_pkt.ts
-            
+
             last_packet_str = f'{node_pkt.portnum} - {util.get_discord_ts_from_dt(ts_with_tz, relative=True)}'
-            
+
             # exclude self node
             if node_pkt.src_id == self.my_node_info.user_info.user_id:
                 continue
-            
+
             nodelist.append([f"**{node_pkt.src_id} | {node_pkt.src_short_name} | {node_pkt.src_long_name} **\nLast Packet: {last_packet_str}\n{pkt_cnt} Packets RX'd ({pkt_cnt_24} in past day)", ts_with_tz])
-            
+
         try:
             # sort nodelist and remove ts from it
             nodelist_sorted = sorted(nodelist, key=lambda x: x[1], reverse=True)
