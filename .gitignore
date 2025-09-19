@@ -188,3 +188,4 @@ discord-bot/config/config*.json
 discord-bot/config/config*.env
 discord-bot/docker_compose_files/meshbot.env
 docker-config.env
+discord-bot/bot/mydatabase
