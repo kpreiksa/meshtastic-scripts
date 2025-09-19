@@ -47,7 +47,7 @@ class MeshClient():
                 self._db_session.add(db_packet)
                 try:
                     self._db_session.commit() # save back to db
-                    logging.info(f'Packet saved to DB with packet_id: {db_packet.pkt_id}')
+                    logging.info(f'Packet saved to DB with pkt_id: {db_packet.pkt_id}')
                 except Exception as e:
                     logging.error(f'DB ROLLBACK: {str(e)}')
                     self._db_session.rollback()
