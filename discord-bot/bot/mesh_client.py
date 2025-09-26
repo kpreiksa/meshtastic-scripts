@@ -421,6 +421,7 @@ class MeshClient():
         return similar_nodes[:3]
 
     def get_node_info(self, node_id=None, nodenum=None, shortname=None, longname=None):
+        # TODO change this to use db
         if node_id:
             if not node_id.startswith('!'):
                 node_id = '!' + node_id

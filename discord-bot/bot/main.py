@@ -1,4 +1,5 @@
 import asyncio
+from platform import node
 from version import __version__
 import json
 import logging
@@ -213,8 +214,8 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
 
 @discord_client.tree.command(name="nodeinfo", description="Gets info for a node from the database")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
-async def nodeinfo(interaction: discord.Interaction, node_id: str):
-    
+async def nodeinfo(interaction: discord.Interaction, node: str):
+
     # TODO: Move this functionality to mesh_client. Potentially use queues like other commands
     # PROS:
     # - it shouldn't be inline
@@ -222,146 +223,160 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
     # - remove DB logic from main.py... this is the only method which calls into the DB directly
     # CONS:
     # - This data doesn't really come from "the mesh" - it comes from the database
-    
+
     # Options:
     # - use db_classes.py or make a new database_client
 
-    logging.info(f'/nodeinfo received, doing query for node ID: {node_id}')
-    current_time = get_current_time_str()
+    logging.info(f'/nodeinfo received, doing query for node ID: {node}')
 
     await interaction.response.defer()
 
+    # Assume don't know node type
+    node_type, proc_node = mesh_client.determine_node_type(node)
+    if node_type =='shortname':
+        # Need to check if this exists
+        n = mesh_client.get_node_num(shortname=proc_node) # TODO consider changing this (and aother locations) into a separate function to return similar nodes?
+    else:
+        n = proc_node # code below uses n
+
+    # TODO: Should try to show RX packets even if the node doesn't exist in MeshNodeDB
+
     embeds = []
 
-    n = mesh_client.get_node_num(node_id=node_id)
-    
-    # TODO: Should try to show RX packets even if the node doesn't exist in MeshNodeDB
-    
-
-    # convert id to num to look up node
-    matching_nodes = mesh_client._db_session.query(db_classes.MeshNodeDB).filter(db_classes.MeshNodeDB.node_num == n).filter(db_classes.MeshNodeDB.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).all()
-    if len(matching_nodes) > 1:
-        error_embed = discord.Embed(title=f"Error", description=f'More than 1 node matching ID: {node_id}', color=MeshBotColors.error())
-        embeds.append(error_embed)
-    elif len(matching_nodes) == 0:
-        error_embed = discord.Embed(title=f"Error", description=f'No node matching ID: {node_id}', color=MeshBotColors.error())
+    if n is None:
+        similar_nodes = mesh_client.get_similar_nodes(proc_node)
+        if similar_nodes:
+            similar_nodes_str = ''
+            for node in similar_nodes:
+                similar_nodes_str += f'`{node[0]}`\n'
+            error_embed = discord.Embed(title=f"Error", description=f'Node shortname: `{node}` is not found.\nDid you mean:\n{similar_nodes_str}', color=MeshBotColors.error())
+        else:
+            error_embed = discord.Embed(title=f"Error", description=f'Node shortname: `{node}` is not found. Please check the spelling and try again.', color=MeshBotColors.error())
         embeds.append(error_embed)
     else:
-        matching_node = matching_nodes[0]
-        matching_packets = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).order_by(db_classes.RXPacket.ts.desc()).all()
-        portnums = list(set([x.portnum for x in matching_packets]))
+        matching_nodes = mesh_client._db_session.query(db_classes.MeshNodeDB).filter(db_classes.MeshNodeDB.node_num == n).filter(db_classes.MeshNodeDB.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).all()
+        if len(matching_nodes) > 1:
+            error_embed = discord.Embed(title=f"Error", description=f'More than 1 node matching: {n} in database', color=MeshBotColors.error())
+            embeds.append(error_embed)
+        elif len(matching_nodes) == 0:
+            error_embed = discord.Embed(title=f"Error", description=f'No node matching: {n} in database', color=MeshBotColors.error())
+            embeds.append(error_embed)
+        else:
+            matching_node = matching_nodes[0]
+            matching_packets = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).order_by(db_classes.RXPacket.ts.desc()).all()
+            portnums = list(set([x.portnum for x in matching_packets]))
 
-        ni_embed = discord.Embed(title=f"Node Info", description=f'From DB for Node: {node_id}', color=MeshBotColors.violet())
-        ni_embed.add_field(name='Node ID/Name', value=matching_node.descriptive_name, inline=False)
+            ni_embed = discord.Embed(title=f"Node Info", description=f'From DB for Node: {n}', color=MeshBotColors.violet()) # TODO change {n} back to node_id (not num)
+            ni_embed.add_field(name='Node ID/Name', value=matching_node.descriptive_name, inline=False)
 
-        # get first packet
-        first_matching_packet = matching_packets[0]
-        first_packet_type = first_matching_packet.portnum
-        first_packet_discord_ts = get_discord_ts_from_dt(first_matching_packet.ts)
-        ni_embed.add_field(name="Last Packet", value=f'{first_packet_type}\nReceived at: {first_packet_discord_ts}', inline=False)
+            # get first packet
+            first_matching_packet = matching_packets[0]
+            first_packet_type = first_matching_packet.portnum
+            first_packet_discord_ts = get_discord_ts_from_dt(first_matching_packet.ts)
+            ni_embed.add_field(name="Last Packet", value=f'{first_packet_type}\nReceived at: {first_packet_discord_ts}', inline=False)
 
-        ni_embed.add_field(name="Cnt Packets RX'd", value=f'{len(matching_packets)}', inline=False)
+            ni_embed.add_field(name="Cnt Packets RX'd", value=f'{len(matching_packets)}', inline=False)
 
-        for portnum in portnums:
-            portnum_packets = [x for x in matching_packets if x.portnum == portnum]
-            latest_packet_for_portnum = portnum_packets[0]
-            discord_ts = get_discord_ts_from_dt(latest_packet_for_portnum.ts)
-            ni_embed.add_field(name=f"{portnum}", value=f'Count: {len(portnum_packets)}\nLatest: {discord_ts}', inline=False)
+            for portnum in portnums:
+                portnum_packets = [x for x in matching_packets if x.portnum == portnum]
+                latest_packet_for_portnum = portnum_packets[0]
+                discord_ts = get_discord_ts_from_dt(latest_packet_for_portnum.ts)
+                ni_embed.add_field(name=f"{portnum}", value=f'Count: {len(portnum_packets)}\nLatest: {discord_ts}', inline=False)
 
-        if matching_node.hw_model is not None:
-            ni_embed.add_field(name=f"HW Model", value=matching_node.hw_model, inline=False)
+            if matching_node.hw_model is not None:
+                ni_embed.add_field(name=f"HW Model", value=matching_node.hw_model, inline=False)
 
-        if matching_node.upd_ts_nodedb is not None:
-            discord_ts = get_discord_ts_from_dt(matching_node.upd_ts_nodedb)
-            ni_embed.add_field(name=f"Node Info updated via Device NodeDB", value=discord_ts, inline=False)
+            if matching_node.upd_ts_nodedb is not None:
+                discord_ts = get_discord_ts_from_dt(matching_node.upd_ts_nodedb)
+                ni_embed.add_field(name=f"Node Info updated via Device NodeDB", value=discord_ts, inline=False)
 
-        if matching_node.upd_ts_nodeinfo is not None:
-            discord_ts = get_discord_ts_from_dt(matching_node.upd_ts_nodeinfo)
-            ni_embed.add_field(name=f"Node Info updated via NODEINFO_APP Packet", value=discord_ts, inline=False)
+            if matching_node.upd_ts_nodeinfo is not None:
+                discord_ts = get_discord_ts_from_dt(matching_node.upd_ts_nodeinfo)
+                ni_embed.add_field(name=f"Node Info updated via NODEINFO_APP Packet", value=discord_ts, inline=False)
 
-        # get most recent position packet
-        latest_position_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.portnum == 'POSITION_APP').filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).order_by(db_classes.RXPacket.ts.desc()).first()
-        if latest_position_packet:
-            lat = latest_position_packet.latitude
-            lon = latest_position_packet.longitude
-            alt_m = latest_position_packet.altitude
-            alt_ft = round(alt_m * 3.281, 0)
+            # get most recent position packet
+            latest_position_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.portnum == 'POSITION_APP').filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).order_by(db_classes.RXPacket.ts.desc()).first()
+            if latest_position_packet:
+                lat = latest_position_packet.latitude
+                lon = latest_position_packet.longitude
+                alt_m = latest_position_packet.altitude
+                alt_ft = round(alt_m * 3.281, 0)
 
-            location_source = latest_position_packet.location_source
-            pdop = latest_position_packet.pdop
-            ground_speed = latest_position_packet.ground_speed
-            sats_in_view = latest_position_packet.sats_in_view
-            precision_bits = latest_position_packet.precision_bits
+                location_source = latest_position_packet.location_source
+                pdop = latest_position_packet.pdop
+                ground_speed = latest_position_packet.ground_speed
+                sats_in_view = latest_position_packet.sats_in_view
+                precision_bits = latest_position_packet.precision_bits
 
-            url = f'https://www.google.com/maps/search/?api=1&query={lat},{lon}'
-            position_embed = discord.Embed(title=f"Position Info", color=MeshBotColors.violet())
+                url = f'https://www.google.com/maps/search/?api=1&query={lat},{lon}'
+                position_embed = discord.Embed(title=f"Position Info", color=MeshBotColors.violet())
 
-            position_embed.add_field(name='Position', value = f'[{round(lat,3)},{round(lon,3)}]({url})', inline=False)
-            position_embed.add_field(name='Altitude', value=f'{alt_m}m ({alt_ft}ft)', inline=False)
-            position_embed.add_field(name='Location Source', value=f'{location_source}', inline=False)
-            position_embed.add_field(name='PDOP', value=f'{pdop}', inline=False)
-            position_embed.add_field(name='Ground Speed', value=f'{ground_speed}', inline=False)
-            position_embed.add_field(name='Sats in View', value=f'{sats_in_view}', inline=False)
-            position_embed.add_field(name='Precision Bits', value=f'{precision_bits}', inline=False)
+                position_embed.add_field(name='Position', value = f'[{round(lat,3)},{round(lon,3)}]({url})', inline=False)
+                position_embed.add_field(name='Altitude', value=f'{alt_m}m ({alt_ft}ft)', inline=False)
+                position_embed.add_field(name='Location Source', value=f'{location_source}', inline=False)
+                position_embed.add_field(name='PDOP', value=f'{pdop}', inline=False)
+                position_embed.add_field(name='Ground Speed', value=f'{ground_speed}', inline=False)
+                position_embed.add_field(name='Sats in View', value=f'{sats_in_view}', inline=False)
+                position_embed.add_field(name='Precision Bits', value=f'{precision_bits}', inline=False)
 
-            discord_ts = get_discord_ts_from_dt(latest_position_packet.ts)
-            position_embed.add_field(name='Updated via POSITION_APP Packet', value=discord_ts, inline=False)
-
-
-            embeds.append((position_embed, latest_position_packet.ts))
+                discord_ts = get_discord_ts_from_dt(latest_position_packet.ts)
+                position_embed.add_field(name='Updated via POSITION_APP Packet', value=discord_ts, inline=False)
 
 
-        # get most recent position packet
-        latest_device_metrics_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).filter(db_classes.RXPacket.portnum == 'TELEMETRY_APP').filter(db_classes.RXPacket.has_device_metrics == True).order_by(db_classes.RXPacket.ts.desc()).first()
-        if latest_device_metrics_packet:
-            device_metrics = latest_device_metrics_packet.telemetry_device_metrics
-            # this will be JSON
-            if device_metrics:
-                battery = device_metrics.get('batteryLevel')
-                voltage = device_metrics.get('voltage')
-                chan_util = device_metrics.get('channelUtilization')
-                air_util = device_metrics.get('airUtilTx')
-                uptime_sec = device_metrics.get('uptimeSeconds')
-                device_info_embed = discord.Embed(title=f"Device Info", color=MeshBotColors.violet())
+                embeds.append((position_embed, latest_position_packet.ts))
 
-                device_info_embed.add_field(name='Battery Level', value=f'{battery}% ({voltage}v)', inline=False)
-                device_info_embed.add_field(name='Channel Utilization', value=f'{round(chan_util, 2)}%', inline=False)
-                device_info_embed.add_field(name='TX Duty Cycle', value=f'{round(air_util, 2)}%', inline=False)
-                device_info_embed.add_field(name='Uptime', value=f'{uptime_str(uptime_sec)} ({uptime_sec}s)', inline=False)
-                discord_ts = get_discord_ts_from_dt(latest_device_metrics_packet.ts)
-                device_info_embed.add_field(name='Updated via TELEMETRY_APP Packet', value=discord_ts, inline=False)
-                embeds.append((device_info_embed, latest_device_metrics_packet.ts))
 
-        latest_environment_metrics_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).filter(db_classes.RXPacket.portnum == 'TELEMETRY_APP').filter(db_classes.RXPacket.has_environment_metrics == True).order_by(db_classes.RXPacket.ts.desc()).first()
-        if latest_environment_metrics_packet:
-            env_metrics = latest_environment_metrics_packet.telemetry_environment_metrics
-            # this will be JSON
-            if env_metrics:
-                temp = env_metrics.get('temperature') # celsius
-                temp_f = (temp * (9/5)) + 32
-                rel_hum = env_metrics.get('relativeHumidity') # %
-                baro = env_metrics.get('barometricPressure') # hPa
-                baro_mmhg = baro * 0.7500637554192
-                baro_inhg = baro * 0.02953
-                baro_psi = baro * 0.014503768078
+            # get most recent position packet
+            latest_device_metrics_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).filter(db_classes.RXPacket.portnum == 'TELEMETRY_APP').filter(db_classes.RXPacket.has_device_metrics == True).order_by(db_classes.RXPacket.ts.desc()).first()
+            if latest_device_metrics_packet:
+                device_metrics = latest_device_metrics_packet.telemetry_device_metrics
+                # this will be JSON
+                if device_metrics:
+                    battery = device_metrics.get('batteryLevel')
+                    voltage = device_metrics.get('voltage')
+                    chan_util = device_metrics.get('channelUtilization')
+                    air_util = device_metrics.get('airUtilTx')
+                    uptime_sec = device_metrics.get('uptimeSeconds')
+                    device_info_embed = discord.Embed(title=f"Device Info", color=MeshBotColors.violet())
 
-                dew_point = temp - ((100 - rel_hum)/5) # celsius
-                dew_point_f = (dew_point * (9/5)) + 32
+                    device_info_embed.add_field(name='Battery Level', value=f'{battery}% ({voltage}v)', inline=False)
+                    device_info_embed.add_field(name='Channel Utilization', value=f'{round(chan_util, 2)}%', inline=False)
+                    device_info_embed.add_field(name='TX Duty Cycle', value=f'{round(air_util, 2)}%', inline=False)
+                    device_info_embed.add_field(name='Uptime', value=f'{uptime_str(uptime_sec)} ({uptime_sec}s)', inline=False)
+                    discord_ts = get_discord_ts_from_dt(latest_device_metrics_packet.ts)
+                    device_info_embed.add_field(name='Updated via TELEMETRY_APP Packet', value=discord_ts, inline=False)
+                    embeds.append((device_info_embed, latest_device_metrics_packet.ts))
 
-                env_info_embed = discord.Embed(title=f"Environmental Info", color=MeshBotColors.violet())
+            latest_environment_metrics_packet = mesh_client._db_session.query(db_classes.RXPacket).filter(db_classes.RXPacket.src_num == matching_node.node_num).filter(db_classes.RXPacket.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).filter(db_classes.RXPacket.portnum == 'TELEMETRY_APP').filter(db_classes.RXPacket.has_environment_metrics == True).order_by(db_classes.RXPacket.ts.desc()).first()
+            if latest_environment_metrics_packet:
+                env_metrics = latest_environment_metrics_packet.telemetry_environment_metrics
+                # this will be JSON
+                if env_metrics:
+                    temp = env_metrics.get('temperature') # celsius
+                    temp_f = (temp * (9/5)) + 32
+                    rel_hum = env_metrics.get('relativeHumidity') # %
+                    baro = env_metrics.get('barometricPressure') # hPa
+                    baro_mmhg = baro * 0.7500637554192
+                    baro_inhg = baro * 0.02953
+                    baro_psi = baro * 0.014503768078
 
-                env_info_embed.add_field(name='Temperature', value=f'{round(temp, 1)}C ({round(temp_f, 1)}F)', inline=False)
-                env_info_embed.add_field(name='Relative Humidity', value=f'{round(rel_hum, 1)}%', inline=False)
-                env_info_embed.add_field(name='Dew Point', value=f'{round(dew_point, 1)}C ({round(dew_point_f, 1)}F)', inline=False)
-                env_info_embed.add_field(name='Barometric Pressure', value=f'{round(baro, 1)}hPa ({round(baro_inhg, 2)}inHg/{round(baro_psi,1)}psi)', inline=False)
-                discord_ts = get_discord_ts_from_dt(latest_environment_metrics_packet.ts)
-                env_info_embed.add_field(name='Updated via TELEMETRY_APP Packet', value=discord_ts, inline=False)
-                embeds.append((env_info_embed, latest_environment_metrics_packet.ts))
+                    dew_point = temp - ((100 - rel_hum)/5) # celsius
+                    dew_point_f = (dew_point * (9/5)) + 32
 
-        # sort the embeds by timestamp, but add nodeinfo first always
-        embeds = sorted(embeds, key=lambda x: x[1], reverse=True)
-        embeds = [x[0] for x in embeds]
-        embeds.insert(0, ni_embed)
+                    env_info_embed = discord.Embed(title=f"Environmental Info", color=MeshBotColors.violet())
+
+                    env_info_embed.add_field(name='Temperature', value=f'{round(temp, 1)}C ({round(temp_f, 1)}F)', inline=False)
+                    env_info_embed.add_field(name='Relative Humidity', value=f'{round(rel_hum, 1)}%', inline=False)
+                    env_info_embed.add_field(name='Dew Point', value=f'{round(dew_point, 1)}C ({round(dew_point_f, 1)}F)', inline=False)
+                    env_info_embed.add_field(name='Barometric Pressure', value=f'{round(baro, 1)}hPa ({round(baro_inhg, 2)}inHg/{round(baro_psi,1)}psi)', inline=False)
+                    discord_ts = get_discord_ts_from_dt(latest_environment_metrics_packet.ts)
+                    env_info_embed.add_field(name='Updated via TELEMETRY_APP Packet', value=discord_ts, inline=False)
+                    embeds.append((env_info_embed, latest_environment_metrics_packet.ts))
+
+            # sort the embeds by timestamp, but add nodeinfo first always
+            embeds = sorted(embeds, key=lambda x: x[1], reverse=True)
+            embeds = [x[0] for x in embeds]
+            embeds.insert(0, ni_embed)
 
     out = await interaction.followup.send(embeds=embeds)
 
