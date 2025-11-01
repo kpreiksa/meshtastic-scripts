@@ -136,16 +136,16 @@ for mesh_channel_index, mesh_channel_name in config.channel_names.items():
         mesh_client.enqueue_send_channel(mesh_channel_index, message, discord_interaction_info=discord_interaction_info)
 
 
-# @discord_client.tree.command(name="traceroute", description="Traceroute a node.")
-# @discord_client.only_in_channel(discord_client.dis_channel_id)
-# async def run_traceroute(interaction: discord.Interaction, node_id: str):
-#     await interaction.response.defer()
+@discord_client.tree.command(name="traceroute", description="Traceroute a node.")
+@discord_client.only_in_channel(discord_client.dis_channel_id)
+async def run_traceroute(interaction: discord.Interaction, node_id: str):
+    await interaction.response.defer()
 
-#     logging.info(f'/traceroute received.')
-#     mesh_client.enqueue_traceroute(node_id)
-#     await asyncio.sleep(0.1)
+    logging.info(f'/traceroute received.')
+    mesh_client.enqueue_traceroute(node_id)
+    await asyncio.sleep(0.1)
 
-#     await interaction.delete_original_response()
+    await interaction.delete_original_response()
 
 @discord_client.tree.command(name="active", description="Lists all active nodes.")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
