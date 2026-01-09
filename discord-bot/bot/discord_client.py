@@ -354,7 +354,7 @@ class DiscordBot(discord.Client):
 
                 if close_after:
                     await asyncio.sleep(0.1)
-                    await asyncio.run(self.close())
+                    await self.close()
 
                 self._discordqueue.task_done()
             except queue.Empty:
