@@ -214,7 +214,7 @@ async def active(interaction: discord.Interaction, active_time: str='61'):
 @discord_client.tree.command(name="nodeinfo", description="Gets info for a node from the database")
 @discord_client.only_in_channel(discord_client.dis_channel_id)
 async def nodeinfo(interaction: discord.Interaction, node_id: str):
-    
+
     # TODO: Move this functionality to mesh_client. Potentially use queues like other commands
     # PROS:
     # - it shouldn't be inline
@@ -222,7 +222,7 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
     # - remove DB logic from main.py... this is the only method which calls into the DB directly
     # CONS:
     # - This data doesn't really come from "the mesh" - it comes from the database
-    
+
     # Options:
     # - use db_classes.py or make a new database_client
 
@@ -234,9 +234,9 @@ async def nodeinfo(interaction: discord.Interaction, node_id: str):
     embeds = []
 
     n = mesh_client.get_node_num(node_id=node_id)
-    
+
     # TODO: Should try to show RX packets even if the node doesn't exist in MeshNodeDB
-    
+
 
     # convert id to num to look up node
     matching_nodes = mesh_client._db_session.query(db_classes.MeshNodeDB).filter(db_classes.MeshNodeDB.node_num == n).filter(db_classes.MeshNodeDB.publisher_mesh_node_num == mesh_client.my_node_info.node_num_str).all()
@@ -573,7 +573,10 @@ async def kms(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
     logging.info(f'Killing myself as requested by {interaction.user.name} ({interaction.user.id})')
     await discord_client.close()
-    mesh_client.iface.close()
+    try:
+        mesh_client.iface.close()
+    except Exception as e:
+        logging.error(f"An error occurred while closing mesh client interface: {e}")
 
 def run_discord_bot():
     try:
@@ -587,7 +590,10 @@ def run_discord_bot():
             asyncio.run(discord_client.close())
         if mesh_client:
             if mesh_client.iface:
-                mesh_client.iface.close()
+                try:
+                    mesh_client.iface.close()
+                except Exception as e:
+                    logging.error(f"An error occurred while closing mesh client interface: {e}")
 
 if __name__ == "__main__":
     run_discord_bot()
