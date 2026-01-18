@@ -854,7 +854,10 @@ class MeshClient():
             except Exception as e:
                 logging.error(f'Heartbeat failed')
                 self.discord_client.enqueue_lost_comm(e)
-                self.iface.close()
+                try:
+                    self.iface.close()
+                except Exception as e:
+                    logging.error(f"An error occurred while closing mesh client interface: {e}")
 
             # do this stuff every time
             try:
