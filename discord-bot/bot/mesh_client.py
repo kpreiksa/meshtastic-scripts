@@ -827,8 +827,9 @@ class MeshClient():
     def process_admin_queue_message(self, msg):
         if isinstance(msg, dict):
             msg_type = msg.get('msg_type')
-            if msg_type == 'traceroute_nodeid':
-                node_id = msg.get('node_id')
+            if msg_type == 'traceroute_node_id':
+                #args are node_id, hop limit, channel #
+                node_id = msg.get('node_id',5,0)
                 # discord_guild_id = msg.get('guild_id')
                 # discord_channel_id = msg.get('channel_id')
                 # discord_message_id = msg.get('discord_message_id')
